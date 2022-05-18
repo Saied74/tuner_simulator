@@ -1,9 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"math"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/Saied74/cli"
 )
@@ -22,28 +25,58 @@ type smithPoint struct {
 	b         float64
 }
 
-type smith struct {
-	outputFile     string
+type extreme struct {
 	s              float64
 	gamma          float64
-	gammaTemp      float64
 	theta          float64
-	thetaTemp      float64
-	point0         *smithPoint
-	point1         *smithPoint
 	region         int
+	basePoint      *smithPoint
 	parallelReact  float64
 	parallelSuscep float64
 	seriesReact    float64
 	seriesSuscep   float64
-	freqs          []float64
-	tolerance      []sensitivity
+}
+
+type smith struct {
+	outputFile       string
+	s                float64
+	gamma            float64
+	gammaTemp        float64
+	theta            float64
+	thetaTemp        float64
+	point0           *smithPoint
+	point1           *smithPoint
+	region           int
+	parallelReact    float64
+	parallelSuscep   float64
+	seriesReact      float64
+	seriesSuscep     float64
+	freqs            []float64
+	tolerance        []sensitivity
+	which            string
+	pointTol         float64
+	baseMaxSeries1   *extreme
+	baseMaxParallel1 *extreme
+	baseMinSeries1   *extreme
+	baseMinParallel1 *extreme
+	baseMaxSeries2   *extreme
+	baseMaxParallel2 *extreme
+	baseMinSeries2   *extreme
+	baseMinParallel2 *extreme
+	tolMaxSeries1    *extreme
+	tolMaxParallel1  *extreme
+	tolMinSeries1    *extreme
+	tolMinParallel1  *extreme
+	tolMaxSeries2    *extreme
+	tolMaxParallel2  *extreme
+	tolMinSeries2    *extreme
+	tolMinParallel2  *extreme
 }
 
 var swr = []float64{1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0}
 
-var angle = []float64{0, 20, 40, 60, 80, 100, 120, 180, 160, 180,
-	200, 210, 240, 260, 280, 300, 320, 340, 360}
+// var angle = []float64{0, 20, 40, 60, 80, 100, 120, 180, 160, 180,
+// 	200, 210, 240, 260, 280, 300, 320, 340, 360}
 
 var rcValues = []string{"160m low C", "160m low L", "160m high C", "160m high L",
 	"80m low C", "80m low L", "80m high C", "80m high L",
@@ -83,9 +116,27 @@ var tolerance = []float64{0.01, -0.01, 0.02, -0.02, 0.05, -0.05, 0.10, -0.10,
 
 func main() {
 	s := smith{
-		outputFile: "data.csv",
-		point0:     &smithPoint{},
-		point1:     &smithPoint{},
+		outputFile:       "data.csv",
+		point0:           &smithPoint{},
+		point1:           &smithPoint{},
+		pointTol:         0.15,
+		baseMaxSeries1:   &extreme{parallelReact: -100000.0, seriesReact: -100000.0, basePoint: &smithPoint{}},
+		baseMaxParallel1: &extreme{parallelReact: -100000.0, seriesReact: -100000.0, basePoint: &smithPoint{}},
+		baseMinSeries1:   &extreme{parallelReact: 100000.0, seriesReact: 100000.0, basePoint: &smithPoint{}},
+		baseMinParallel1: &extreme{parallelReact: 100000.0, seriesReact: 100000.0, basePoint: &smithPoint{}},
+		baseMaxSeries2:   &extreme{parallelReact: -100000.0, seriesReact: -100000.0, basePoint: &smithPoint{}},
+		baseMaxParallel2: &extreme{parallelReact: -100000.0, seriesReact: -100000.0, basePoint: &smithPoint{}},
+		baseMinSeries2:   &extreme{parallelReact: 100000.0, seriesReact: 100000.0, basePoint: &smithPoint{}},
+		baseMinParallel2: &extreme{parallelReact: 100000.0, seriesReact: 100000.0, basePoint: &smithPoint{}},
+
+		tolMaxSeries1:   &extreme{parallelReact: -100000.0, seriesReact: -100000.0, basePoint: &smithPoint{}},
+		tolMaxParallel1: &extreme{parallelReact: -100000.0, seriesReact: -100000.0, basePoint: &smithPoint{}},
+		tolMinSeries1:   &extreme{parallelReact: 100000.0, seriesReact: 100000.0, basePoint: &smithPoint{}},
+		tolMinParallel1: &extreme{parallelReact: 100000.0, seriesReact: 100000.0, basePoint: &smithPoint{}},
+		tolMaxSeries2:   &extreme{parallelReact: -100000.0, seriesReact: -100000.0, basePoint: &smithPoint{}},
+		tolMaxParallel2: &extreme{parallelReact: -100000.0, seriesReact: -100000.0, basePoint: &smithPoint{}},
+		tolMinSeries2:   &extreme{parallelReact: 100000.0, seriesReact: 100000.0, basePoint: &smithPoint{}},
+		tolMinParallel2: &extreme{parallelReact: 100000.0, seriesReact: 100000.0, basePoint: &smithPoint{}},
 	}
 	c := cli.Command(&uiItems)
 	for {
@@ -94,7 +145,7 @@ func main() {
 		case "Quit":
 			os.Exit(1)
 		case "noError":
-			f, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0555)
+			f, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -124,7 +175,7 @@ func main() {
 				}
 			}
 		case "tolerance":
-			f, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0555)
+			f, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -167,8 +218,182 @@ func main() {
 				}
 			}
 		case "distance":
+			f, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer f.Close()
+
+			err = writeDistanceHeader(f)
+			if err != nil {
+				log.Fatal(err)
+			}
+			_, err = f.WriteString("\n")
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			for _, w := range swr {
+				s.s = w
+				s.gamma = (s.s - 1.0) / (s.s + 1.0)
+				for i := 0; i < 360; i++ {
+					s.theta = float64(i)
+					s.trueCalc()
+					switch s.region {
+					case 1:
+						if s.seriesReact > s.baseMaxSeries1.seriesReact {
+							s.copyExt(s.baseMaxSeries1)
+						}
+						if s.seriesReact < s.baseMinSeries1.seriesReact {
+							s.copyExt(s.baseMinSeries1)
+						}
+						if s.parallelReact > s.baseMaxParallel1.parallelReact {
+							s.copyExt(s.baseMaxParallel1)
+						}
+						if s.parallelReact < s.baseMinParallel1.parallelReact {
+							s.copyExt(s.baseMinParallel1)
+						}
+					case 2:
+						if s.seriesReact > s.baseMaxSeries2.seriesReact {
+							s.copyExt(s.baseMaxSeries2)
+						}
+						if s.seriesReact < s.baseMinSeries2.seriesReact {
+							s.copyExt(s.baseMinSeries2)
+						}
+						if s.parallelReact > s.baseMaxParallel2.parallelReact {
+							s.copyExt(s.baseMaxParallel2)
+						}
+						if s.parallelReact < s.baseMinParallel2.parallelReact {
+							s.copyExt(s.baseMinParallel2)
+						}
+					}
+					s.gammaTemp = s.gamma
+					s.thetaTemp = s.theta
+					switch s.which {
+					case "theta":
+						s.theta += s.theta * s.pointTol
+					case "gamma":
+						s.gamma += s.gamma * s.pointTol
+					}
+					s.trueCalc()
+					switch s.region {
+					case 1:
+						if s.seriesReact > s.tolMaxSeries1.seriesReact {
+							s.copyExt(s.tolMaxSeries1)
+						}
+						if s.seriesReact < s.tolMinSeries1.seriesReact {
+							s.copyExt(s.tolMinSeries1)
+						}
+						if s.parallelReact > s.tolMaxParallel1.parallelReact {
+							s.copyExt(s.tolMaxParallel1)
+						}
+						if s.parallelReact < s.tolMinParallel1.parallelReact {
+							s.copyExt(s.tolMinParallel1)
+						}
+					case 2:
+						if s.seriesReact > s.tolMaxSeries2.seriesReact {
+							s.copyExt(s.tolMaxSeries2)
+						}
+						if s.seriesReact < s.tolMinSeries2.seriesReact {
+							s.copyExt(s.tolMinSeries2)
+						}
+						if s.parallelReact > s.tolMaxParallel2.parallelReact {
+							s.copyExt(s.tolMaxParallel2)
+						}
+						if s.parallelReact < s.tolMinParallel2.parallelReact {
+							s.copyExt(s.tolMinParallel2)
+						}
+					}
+					s.gamma = s.gammaTemp
+					s.theta = s.thetaTemp
+				}
+			}
+			err = s.writeDistance(f)
+			if err != nil {
+				log.Fatal(err)
+			}
+		case "bruteForce":
+			f, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer f.Close()
+			err = writeImpedanceHeader(f)
+			if err != nil {
+				log.Fatal(err)
+			}
+			_, err = f.WriteString("r,x")
+			if err != nil {
+				log.Fatal(err)
+			}
+			_, err = f.WriteString("\n")
+			if err != nil {
+				log.Fatal(err)
+			}
+			for _, w := range swr {
+				s.s = w
+				s.gamma = (s.s - 1.0) / (s.s + 1.0)
+				for i := 0; i < 360; i++ {
+					s.theta = float64(i)
+					s.trueCalc()
+					err = s.writeImpedance(f)
+					if err != nil {
+						log.Fatal(err)
+					}
+					s.gammaTemp = s.gamma
+					s.thetaTemp = s.theta
+					s.copyExt(s.baseMaxSeries1)
+					switch s.which {
+					case "gamma":
+						s.gamma += s.pointTol * s.gamma
+					case "theta":
+						s.theta += s.pointTol * s.theta
+					}
+					s.trueCalc()
+					switch s.region {
+					case 1:
+						b := s.baseMaxSeries1.basePoint.b + s.parallelSuscep
+						g := s.baseMaxSeries1.basePoint.g
+						ySq := b*b + g*g
+						r := g / ySq
+						x := -b / ySq
+						x += s.seriesReact
+						_, err = f.WriteString(fmt.Sprintf("%.3f,%.3f", r, x))
+						if err != nil {
+							log.Fatal(err)
+						}
+					case 2:
+						x := s.baseMaxSeries1.basePoint.x + s.seriesReact
+						r := s.baseMaxSeries1.basePoint.r
+						zSq := x*x + r*r
+						g := r / zSq
+						b := -x / zSq
+						b += s.parallelSuscep
+						ySq := b*b + g*g
+						rp := g / ySq
+						xp := -b / ySq
+						_, err = f.WriteString(fmt.Sprintf("%.3f,%.3f", rp, xp))
+						if err != nil {
+							log.Fatal(err)
+						}
+					}
+					_, err = f.WriteString("\n")
+					if err != nil {
+						log.Fatal(err)
+					}
+					s.gamma = s.gammaTemp
+					s.theta = s.thetaTemp
+				}
+			}
 		case "fileName":
 			s.outputFile = item.Value
+		case "pointTol":
+			x := strings.TrimSuffix(item.Value, "%")
+			y, _ := strconv.Atoi(x)
+			s.pointTol = float64(y) / 100
+			//fmt.Println(s.pointTol)
+		case "which":
+			s.which = item.Value
 		default:
 			continue
 		}
@@ -186,30 +411,6 @@ func (s *smith) trueCalc() {
 		log.Fatal("bad region")
 	}
 }
-
-//	s.writeImpedance(f)
-// 			s.gammaTemp = s.gamma
-// 			s.thetaTemp = s.theta
-// 			s.calcTolerance()
-// 			//	for i := 0; i < len(s.tolerance); i++ {
-// 			s.writeImpedance(f)
-// 			err := s.writeTolerance(f)
-// 			if err != nil {
-// 				log.Fatal(err)
-// 			}
-// 			_, err = f.WriteString("\n")
-// 			if err != nil {
-// 				log.Fatal(err)
-// 			}
-// 			//	}
-// 			s.gamma = s.gammaTemp
-// 			s.theta = s.thetaTemp
-// 			// s.calcFreqs()
-// 			// s.writeFreqs(f)
-//
-// 		}
-// 	}
-// }
 
 func (s *smith) locate() {
 	theta := 2.0 * (s.theta / 360.0) * math.Pi
@@ -311,4 +512,23 @@ func (s *smith) calcTolerance() {
 		s.theta = s.thetaTemp
 		//s.tolerance = append(s.tolerance, float64(s.region), s.parallelReact, s.seriesReact)
 	}
+}
+
+func (s *smith) copyExt(e *extreme) {
+
+	e.s = s.s
+	e.gamma = s.gamma
+	e.theta = s.theta
+	e.region = s.region
+	//e.basePoint      *smithPoint
+	e.basePoint.gammaReal = s.point0.gammaReal
+	e.basePoint.gammaImag = s.point0.gammaImag
+	e.basePoint.r = s.point0.r
+	e.basePoint.x = s.point0.x
+	e.basePoint.g = s.point0.g
+	e.basePoint.b = s.point0.b
+	e.parallelReact = s.parallelReact
+	e.parallelSuscep = s.parallelSuscep
+	e.seriesReact = s.seriesReact
+	e.seriesSuscep = s.seriesSuscep
 }
