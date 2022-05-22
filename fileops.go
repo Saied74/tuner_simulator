@@ -20,34 +20,10 @@ func writeImpedanceHeader(f *os.File) error {
 	return nil
 }
 
-//writes the header for the tolerance study.  It generates the text from
-//the tolerance values.  G stands for Gamma, T stands for Theta
-func writeToleranceHeader(f *os.File) error {
-
-	for _, t := range tolerance {
-		tt := int(t * 100)
-		item := fmt.Sprintf("Region G %d,Region T %d,", tt, tt)
-		_, err := f.WriteString(item)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-//writes header for the maximum and minimum values of parallel and series impedances
-func writeDistanceHeader(f *os.File) error {
-	_, err := f.WriteString("Struct,Varied,SWR,Gamma,Theta,Reigon,r,x,Parallel X,Series X")
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 //header for when the actual value of L and C are calculated
 //past use, may not have any future use
-func writeFreqHeader(f *os.File) error {
-	for _, item := range rcValues {
+func writeLCHeader(f *os.File) error {
+	for _, item := range lcValues {
 		_, err := f.WriteString(item + ",")
 		if err != nil {
 			return err
