@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -38,6 +39,7 @@ type extreme struct {
 
 type smith struct {
 	outputFile       string
+	minMaxFile       string
 	s                float64
 	gamma            float64
 	gammaTemp        float64
@@ -58,6 +60,8 @@ type smith struct {
 	gainTol          float64
 	phaseTol         float64
 	normalize        string
+	options          string
+	minMax           map[string]*lcMinMax
 	baseMaxSeries1   *extreme
 	baseMaxParallel1 *extreme
 	baseMinSeries1   *extreme
@@ -76,7 +80,15 @@ type smith struct {
 	tolMinParallel2  *extreme
 }
 
-var swr = []float64{1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0}
+type lcMinMax struct {
+	freq float64
+	minC float64
+	maxC float64
+	minL float64
+	maxL float64
+}
+
+var swrList = []float64{1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0}
 
 // var angle = []float64{0, 20, 40, 60, 80, 100, 120, 180, 160, 180,
 // 	200, 210, 240, 260, 280, 300, 320, 340, 360}
@@ -89,11 +101,13 @@ var lcValues = []string{"160m low C", "160m low L", "160m high C", "160m high L"
 	"15m low C", "15m low L", "15m high C", "15m high L",
 	"12m low C", "12m low L", "12m high C", "12m high L",
 	"10m low C", "10m low L", "10m high C", "10m high L",
+	"6m low C", "6m low L", "6m high C", "6m high L",
 }
 
 var freqList = []string{"160m low", "160m high", "80m low", "80m high",
 	"40m low", "40m high", "20m low", "20m high", "17m low", "17m high",
-	"15m low", "15m high", "12m low", "12m high", "10m low", "10m high"}
+	"15m low", "15m high", "12m low", "12m high", "10m low", "10m high",
+	"6m low", "6m high"}
 
 var freqs = map[string]float64{
 	"160m low":  1.8e6,
@@ -112,13 +126,23 @@ var freqs = map[string]float64{
 	"12m high":  24.990e6,
 	"10m low":   28.0e6,
 	"10m high":  29.7e6,
+	"6m low":    50.0e6,
+	"6m high":   54.0e6,
 }
 
 var tolerance = []float64{0.01, -0.01, 0.02, -0.02, 0.05, -0.05, 0.10, -0.10,
 	0.15, -0.15, 0.20, -0.20, 0.25, -0.25}
 
+var baseCap = []float64{3000.0e-12, 1500.0e-12, 750.0e-12, 360.0e-12, 180.0e-12,
+	91.0e-12, 43.0e-12, 22.0e-12, 11.0e-12}
+
+var baseInductor = []float64{6400.0e-9, 3200.0e-9, 1600.0e-9, 800.0e-9, 400.0e-9,
+	200.0e-9, 100.0e-9, 50.0e-9, 25.0e-9}
+
 func main() {
-	s := makeSmith()
+	home := os.Getenv("HOME")
+	home += "/Documents/hamradio/Antennas/tuner/Simulation_output/"
+	s := makeSmith(home)
 	c := cli.Command(&uiItems)
 	for {
 		item := <-c
@@ -126,6 +150,7 @@ func main() {
 		case "Quit":
 			os.Exit(1)
 		case "noError":
+			s := s.resetSmith(home)
 			f, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
 			if err != nil {
 				log.Fatal(err)
@@ -139,7 +164,7 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			for _, w := range swr {
+			for _, w := range swrList {
 				s.s = w
 				s.gamma = (s.s - 1.0) / (s.s + 1.0)
 				for i := 0; i < 360; i++ {
@@ -155,53 +180,7 @@ func main() {
 					}
 				}
 			}
-		case "oneError":
-			f, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer f.Close()
-			err = writeImpedanceHeader(f)
-			if err != nil {
-				log.Fatal(err)
-			}
-			_, err = f.WriteString("swr")
-			if err != nil {
-				log.Fatal(err)
-			}
-			_, err = f.WriteString("\n")
-			if err != nil {
-				log.Fatal(err)
-			}
-			for _, w := range swr {
-				s.s = w
-				gamma := (s.s - 1.0) / (s.s + 1.0)
-				s.gamma = gamma
-				if s.which == "gamma" {
-					s.gamma += s.gainTol * gamma
-				}
-				for i := 0; i < 360; i++ {
-					theta := float64(i)
-					s.theta = theta
-					if s.which == "theta" {
-						s.theta += s.phaseTol
-					}
-					s.trueCalc()
-					err = s.writeImpedance(f)
-					if err != nil {
-						log.Fatal(err)
-					}
-					swr := calcSWR(s.point1.r, s.point1.x)
-					_, err = f.WriteString(fmt.Sprintf("%.2f", swr))
-					if err != nil {
-						log.Fatal(err)
-					}
-					_, err = f.WriteString("\n")
-					if err != nil {
-						log.Fatal(err)
-					}
-				}
-			}
+			// TODO: If the tolerance option to be used, it needs to be fixed.
 		case "tolerance":
 			f, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
 			if err != nil {
@@ -220,7 +199,7 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			for _, w := range swr {
+			for _, w := range swrList {
 				s.s = w
 				s.gamma = (s.s - 1.0) / (s.s + 1.0)
 				for i := 0; i < 360; i++ {
@@ -245,112 +224,15 @@ func main() {
 					s.theta = s.thetaTemp
 				}
 			}
-		case "distance":
-			f, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer f.Close()
-
-			err = writeDistanceHeader(f)
-			if err != nil {
-				log.Fatal(err)
-			}
-			_, err = f.WriteString("\n")
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			for _, w := range swr {
-				s.s = w
-				s.gamma = (s.s - 1.0) / (s.s + 1.0)
-				for i := 0; i < 360; i++ {
-					s.theta = float64(i)
-					s.trueCalc()
-					switch s.region {
-					case 1:
-						if s.seriesReact > s.baseMaxSeries1.seriesReact {
-							s.copyExt(s.baseMaxSeries1)
-						}
-						if s.seriesReact < s.baseMinSeries1.seriesReact {
-							s.copyExt(s.baseMinSeries1)
-						}
-						if s.parallelReact > s.baseMaxParallel1.parallelReact {
-							s.copyExt(s.baseMaxParallel1)
-						}
-						if s.parallelReact < s.baseMinParallel1.parallelReact {
-							s.copyExt(s.baseMinParallel1)
-						}
-					case 2:
-						if s.seriesReact > s.baseMaxSeries2.seriesReact {
-							s.copyExt(s.baseMaxSeries2)
-						}
-						if s.seriesReact < s.baseMinSeries2.seriesReact {
-							s.copyExt(s.baseMinSeries2)
-						}
-						if s.parallelReact > s.baseMaxParallel2.parallelReact {
-							s.copyExt(s.baseMaxParallel2)
-						}
-						if s.parallelReact < s.baseMinParallel2.parallelReact {
-							s.copyExt(s.baseMinParallel2)
-						}
-					}
-					s.gammaTemp = s.gamma
-					s.thetaTemp = s.theta
-					switch s.which {
-					case "theta":
-						s.theta += s.phaseTol
-					case "gamma":
-						s.gamma += s.gamma * s.gainTol
-					}
-					s.trueCalc()
-					switch s.region {
-					case 1:
-						if s.seriesReact > s.tolMaxSeries1.seriesReact {
-							s.copyExt(s.tolMaxSeries1)
-						}
-						if s.seriesReact < s.tolMinSeries1.seriesReact {
-							s.copyExt(s.tolMinSeries1)
-						}
-						if s.parallelReact > s.tolMaxParallel1.parallelReact {
-							s.copyExt(s.tolMaxParallel1)
-						}
-						if s.parallelReact < s.tolMinParallel1.parallelReact {
-							s.copyExt(s.tolMinParallel1)
-						}
-					case 2:
-						if s.seriesReact > s.tolMaxSeries2.seriesReact {
-							s.copyExt(s.tolMaxSeries2)
-						}
-						if s.seriesReact < s.tolMinSeries2.seriesReact {
-							s.copyExt(s.tolMinSeries2)
-						}
-						if s.parallelReact > s.tolMaxParallel2.parallelReact {
-							s.copyExt(s.tolMaxParallel2)
-						}
-						if s.parallelReact < s.tolMinParallel2.parallelReact {
-							s.copyExt(s.tolMinParallel2)
-						}
-					}
-					s.gamma = s.gammaTemp
-					s.theta = s.thetaTemp
-				}
-			}
-			err = s.writeDistance(f)
-			if err != nil {
-				log.Fatal(err)
-			}
 		case "bruteForce":
+
+			//s := s.resetSmith()
 			f, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
 			if err != nil {
 				log.Fatal(err)
 			}
 			defer f.Close()
 			err = writeImpedanceHeader(f)
-			if err != nil {
-				log.Fatal(err)
-			}
-			_, err = f.WriteString("r,x,New Region,New Series,New Parallel,swr,")
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -362,10 +244,24 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			for _, w := range swr {
+			f1, err := os.OpenFile(s.minMaxFile, os.O_RDWR|os.O_CREATE, 0666)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer f1.Close()
+			err = writeMMHeader(f1)
+			if err != nil {
+				log.Fatal(err)
+			}
+			_, err = f1.WriteString("\n")
+			if err != nil {
+				log.Fatal(err)
+			}
+			for _, w := range swrList {
 				var swr, r, x float64
 				for i := 0; i < 360; i++ {
-					s = makeSmith()
+
+					s := s.resetSmith(home)
 					s.s = w
 					s.gamma = (s.s - 1.0) / (s.s + 1.0)
 					s.theta = float64(i)
@@ -395,20 +291,78 @@ func main() {
 					if err != nil {
 						log.Fatal(err)
 					}
-					err = s.calcWriteLCValues(f)
-					if err != nil {
-						log.Fatal(err)
+					for _, val := range freqList {
+						var l, c, l0, c0 float64
+						var ok bool
+						freq, ok := freqs[val]
+						if !ok {
+							log.Fatal(fmt.Errorf("bad index into freqList"))
+						}
+						//this is a series of fall through conditions.
+						//first, the true value of L & C matching elements are calculated
+						//this is for all cases below
+						l, c = s.calcLCValues(freq)
+						//If called for, the min/max values of true L&C calculated
+						//and written to file (at the end)
+						//no other conditions will be met after this.
+						if s.stepMMLC() {
+							s.calcMinMax(l, c, freq, val)
+						}
+						//if called for, true LC values are approximated
+						//this also sets up the condition for all the cases below
+						if s.stepFitLC() {
+							l0, c0 = l, c
+							c, ok = fitLC(c0, baseCap)
+							if !ok {
+								c = 495.0
+							}
+							l, ok = fitLC(l0, baseInductor)
+							if !ok {
+								l = 495.0
+							}
+						}
+						//if called for, the min/max values of the approximated LC are
+						//calculated.
+						//no other conditions will be met after this.
+						if s.stepMMFitLC() {
+							s.calcMinMax(l, c, freq, val)
+						}
+						//if called for, the difference between the true and approximate
+						//LC values are calculated.
+						//This is also a set up for the case that follows.
+						if s.stepDelFitNotFit() {
+							c = math.Abs(c0 - c)
+							l = math.Abs(l0 - l)
+						}
+						if s.stepDelMMFitNotFit() {
+							s.calcMinMax(l, c, freq, val)
+						}
+
+						err := s.writeLCValues(l, c, f)
+						if err != nil {
+							log.Fatal(err)
+						}
 					}
 					_, err = f.WriteString("\n")
 					if err != nil {
 						log.Fatal(err)
 					}
+
 					s.gamma = s.gammaTemp
 					s.theta = s.thetaTemp
 				}
 			}
+			//condition for writing min/max values
+			if s.stepMMLC() || s.stepMMFitLC() || s.stepDelMMFitNotFit() {
+				err = s.writeMMValues(f1)
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
 		case "fileName":
-			s.outputFile = item.Value
+			s.outputFile = home + item.Value
+		case "minMaxFile":
+			s.minMaxFile = home + item.Value
 		case "gainTol":
 			x := strings.TrimSuffix(item.Value, "%")
 			y, _ := strconv.Atoi(x)
@@ -418,15 +372,13 @@ func main() {
 			s.phaseTol = float64(y)
 		case "which":
 			s.which = item.Value
-		case "iterations":
-			iter, _ := strconv.Atoi(item.Value)
-			s.iteration = iter
-			fmt.Println("Iteration: ", s.iteration)
 		case "threshold":
 			thresh, _ := strconv.ParseFloat(item.Value, 64)
 			s.threshold = thresh
 		case "normalize":
 			s.normalize = item.Value
+		case "options":
+			s.options = item.Value
 		default:
 			log.Fatal("Bad parameter passed", item.Name, item.Value)
 		}

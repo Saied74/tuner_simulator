@@ -8,9 +8,8 @@ import (
 )
 
 var uiItems = cli.Items{
-	OrderList: []string{"noError", "oneError", "tolerance", "distance", "bruteForce",
-		"fileName", "gainTol", "phaseTol", "which", "iterations", "threshold",
-		"normalize"},
+	OrderList: []string{"fileName", "minMaxFile", "options", "gainTol", "phaseTol",
+		"noError", "normalize", "threshold", "which", "tolerance", "bruteForce"},
 	ItemList: map[string]*cli.Item{
 		"noError": &cli.Item{
 			Name:      "noError",
@@ -19,24 +18,10 @@ var uiItems = cli.Items{
 			Value:     "",
 			Validator: cli.ItemValidator(func(x string) bool { return true }),
 		},
-		"oneError": &cli.Item{
-			Name:      "oneError",
-			Prompt:    "Run the simulation with one errors and write a csv file",
-			Response:  "Do I need this 1?",
-			Value:     "",
-			Validator: cli.ItemValidator(func(x string) bool { return true }),
-		},
 		"tolerance": &cli.Item{
 			Name:      "tolerance",
-			Prompt:    "Run tolerance study according to the tolerance list",
+			Prompt:    "Run tolerance study according to the tolerance list (needs to be fixed)",
 			Response:  "Do I need this? 2",
-			Value:     "",
-			Validator: cli.ItemValidator(func(x string) bool { return true }),
-		},
-		"distance": &cli.Item{
-			Name:      "distance",
-			Prompt:    "Calculate the minimum and maximum distances",
-			Response:  "Do I need this 3?",
 			Value:     "",
 			Validator: cli.ItemValidator(func(x string) bool { return true }),
 		},
@@ -52,6 +37,13 @@ var uiItems = cli.Items{
 			Prompt:    "Change the csv file name",
 			Response:  "Do I need this 4?",
 			Value:     "data.csv",
+			Validator: filenameValidator,
+		},
+		"minMaxFile": &cli.Item{
+			Name:      "minMaxFile",
+			Prompt:    "Change the minMax file name",
+			Response:  "Do I need this 4?",
+			Value:     "minMax.csv",
 			Validator: filenameValidator,
 		},
 		"gainTol": &cli.Item{
@@ -75,13 +67,7 @@ var uiItems = cli.Items{
 			Value:     "",
 			Validator: whichValidator,
 		},
-		"iterations": &cli.Item{
-			Name:      "iterations",
-			Prompt:    "How many iterations for swr calculaton",
-			Response:  "Do I need this 4?",
-			Value:     "2",
-			Validator: iterValidator,
-		},
+
 		"threshold": &cli.Item{
 			Name:      "threshold",
 			Prompt:    "Max SWR threshold to stop brute force iteration",
@@ -95,6 +81,25 @@ var uiItems = cli.Items{
 			Response:  "Do I need this 4?",
 			Value:     "normalize",
 			Validator: normalValidator,
+		},
+		/*
+			In all cases below the results are written to file.
+			In the min/max case, they are written to the minMaxFile
+			LC: Calculate the series inductance and parallel capacitance
+			MMLC: Calculate minimum and maximum LC values
+			FitLC: Approximate LC values using baseCap and baseInductor values
+			MMFitLC: Calculate minimum and maximum approximated LC values
+			DelFitNotFit:  Calculate the difference between true and approximated LC
+			lcValues
+			DelMMFitNotFit: Calculate minumum and maximum difference between true and
+			approximated values
+		*/
+		"options": &cli.Item{
+			Name:      "options",
+			Prompt:    "Select: LC, MMLC, FitLC, MMFitLC, DelFitNotFit, DelMMFitNotFit, VI",
+			Response:  "Do I need this 4?",
+			Value:     "MMFitLC",
+			Validator: optionValidator,
 		},
 	},
 	ActionLines: []string{"Enter the number of item you would like to runn or q to quit",
@@ -148,17 +153,6 @@ var whichValidator = cli.ItemValidator(func(x string) bool {
 	}
 })
 
-var iterValidator = cli.ItemValidator(func(x string) bool {
-	y, err := strconv.Atoi(x)
-	if err != nil {
-		return false
-	}
-	if y < 1 {
-		return false
-	}
-	return true
-})
-
 var thresholdValidator = cli.ItemValidator(func(x string) bool {
 	_, err := strconv.ParseFloat(x, 64)
 	if err != nil {
@@ -178,6 +172,26 @@ var normalValidator = cli.ItemValidator(func(x string) bool {
 	case "no":
 		return true
 	case "not":
+		return true
+	}
+	return false
+})
+
+var optionValidator = cli.ItemValidator(func(x string) bool {
+	switch x {
+	case "LC":
+		return true
+	case "MMLC":
+		return true
+	case "FitLC":
+		return true
+	case "MMFitLC":
+		return true
+	case "DelFitNotFit":
+		return true
+	case "DelMMFitNotFit":
+		return true
+	case "VI":
 		return true
 	}
 	return false
