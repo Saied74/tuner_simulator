@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/cmplx"
 	"os"
 	"strconv"
 	"strings"
@@ -37,47 +38,44 @@ type extreme struct {
 	seriesSuscep   float64
 }
 
+type matchParts struct {
+	inPlay    bool
+	value     float64
+	impedance float64
+	vAcross   complex128
+	iThrough  complex128
+	vToGround complex128
+}
+
 type smith struct {
-	outputFile       string
-	minMaxFile       string
-	s                float64
-	gamma            float64
-	gammaTemp        float64
-	theta            float64
-	thetaTemp        float64
-	point0           *smithPoint
-	point1           *smithPoint
-	region           int
-	parallelReact    float64
-	parallelSuscep   float64
-	seriesReact      float64
-	seriesSuscep     float64
-	freqs            []float64
-	tolerance        []sensitivity
-	which            string
-	iteration        int
-	threshold        float64
-	gainTol          float64
-	phaseTol         float64
-	normalize        string
-	options          string
-	minMax           map[string]*lcMinMax
-	baseMaxSeries1   *extreme
-	baseMaxParallel1 *extreme
-	baseMinSeries1   *extreme
-	baseMinParallel1 *extreme
-	baseMaxSeries2   *extreme
-	baseMaxParallel2 *extreme
-	baseMinSeries2   *extreme
-	baseMinParallel2 *extreme
-	tolMaxSeries1    *extreme
-	tolMaxParallel1  *extreme
-	tolMinSeries1    *extreme
-	tolMinParallel1  *extreme
-	tolMaxSeries2    *extreme
-	tolMaxParallel2  *extreme
-	tolMinSeries2    *extreme
-	tolMinParallel2  *extreme
+	outputFile     string
+	minMaxFile     string
+	s              float64 //swr
+	gamma          float64 //magnitude of the reflection coefficient
+	gammaTemp      float64 //phase of the reflection coefficient
+	theta          float64
+	thetaTemp      float64
+	point0         *smithPoint
+	point1         *smithPoint
+	region         int
+	parallelReact  float64
+	parallelSuscep float64
+	seriesReact    float64
+	seriesSuscep   float64
+	freqs          []float64
+	tolerance      []sensitivity
+	which          string //use gain error, phase error, or both
+	iteration      int
+	threshold      float64
+	gainTol        float64
+	phaseTol       float64
+	normalize      string //convert floating point numbers to pF, nH, etc.
+	options        string
+	minMax         map[string]*lcMinMax
+	baseMaxSeries1 *extreme
+	matchC         []*matchParts //ordered from the highest value to the lowest value
+	matchL         []*matchParts //ordered from the highest value to the lowest value
+	vSource        float64
 }
 
 type lcMinMax struct {
@@ -130,12 +128,14 @@ var freqs = map[string]float64{
 	"6m high":   54.0e6,
 }
 
-var tolerance = []float64{0.01, -0.01, 0.02, -0.02, 0.05, -0.05, 0.10, -0.10,
-	0.15, -0.15, 0.20, -0.20, 0.25, -0.25}
+// var tolerance = []float64{0.01, -0.01, 0.02, -0.02, 0.05, -0.05, 0.10, -0.10,
+// 	0.15, -0.15, 0.20, -0.20, 0.25, -0.25}
 
+//Important Note:  Capacitance values are listed from the largest to the smallest
 var baseCap = []float64{3000.0e-12, 1500.0e-12, 750.0e-12, 360.0e-12, 180.0e-12,
 	91.0e-12, 43.0e-12, 22.0e-12, 11.0e-12}
 
+//Important note:  Inductance values are listed from the largest to the smallest
 var baseInductor = []float64{6400.0e-9, 3200.0e-9, 1600.0e-9, 800.0e-9, 400.0e-9,
 	200.0e-9, 100.0e-9, 50.0e-9, 25.0e-9}
 
@@ -149,113 +149,57 @@ func main() {
 		switch item.Name {
 		case "Quit":
 			os.Exit(1)
-		case "noError":
-			s := s.resetSmith(home)
-			f, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer f.Close()
-			err = writeImpedanceHeader(f)
-			if err != nil {
-				log.Fatal(err)
-			}
-			_, err = f.WriteString("\n")
-			if err != nil {
-				log.Fatal(err)
-			}
-			for _, w := range swrList {
-				s.s = w
-				s.gamma = (s.s - 1.0) / (s.s + 1.0)
-				for i := 0; i < 360; i++ {
-					s.theta = float64(i)
-					s.trueCalc()
-					err = s.writeImpedance(f)
-					if err != nil {
-						log.Fatal(err)
-					}
-					_, err = f.WriteString("\n")
-					if err != nil {
-						log.Fatal(err)
-					}
-				}
-			}
-			// TODO: If the tolerance option to be used, it needs to be fixed.
-		case "tolerance":
-			f, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer f.Close()
-			err = writeImpedanceHeader(f)
-			if err != nil {
-				log.Fatal(err)
-			}
-			err = writeToleranceHeader(f)
-			if err != nil {
-				log.Fatal(err)
-			}
-			_, err = f.WriteString("\n")
-			if err != nil {
-				log.Fatal(err)
-			}
-			for _, w := range swrList {
-				s.s = w
-				s.gamma = (s.s - 1.0) / (s.s + 1.0)
-				for i := 0; i < 360; i++ {
-					s.theta = float64(i)
-					s.trueCalc()
-					s.gammaTemp = s.gamma
-					s.thetaTemp = s.theta
-					s.calcTolerance()
-					err = s.writeImpedance(f)
-					if err != nil {
-						log.Fatal(err)
-					}
-					err := s.writeTolerance(f)
-					if err != nil {
-						log.Fatal(err)
-					}
-					_, err = f.WriteString("\n")
-					if err != nil {
-						log.Fatal(err)
-					}
-					s.gamma = s.gammaTemp
-					s.theta = s.thetaTemp
-				}
-			}
-		case "bruteForce":
 
+		case "bruteForce":
+			// fmt.Println("Entered bruteForce block")
+			var f, f1 *os.File
+			var err error
 			//s := s.resetSmith()
-			f, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
-			if err != nil {
-				log.Fatal(err)
+			if s.stepLCFile() || s.stepFitLCFile() {
+				f, err = os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
+				if err != nil {
+					log.Fatal(err)
+				}
+				defer f.Close()
+				err = writeImpedanceHeader(f)
+				if err != nil {
+					log.Fatal(err)
+				}
+				err = writeLCHeader(f)
+				if err != nil {
+					log.Fatal(err)
+				}
+				_, err = f.WriteString("\n")
+				if err != nil {
+					log.Fatal(err)
+				}
+
 			}
-			defer f.Close()
-			err = writeImpedanceHeader(f)
-			if err != nil {
-				log.Fatal(err)
+			if s.stepMMFile() {
+				f1, err := os.OpenFile(s.minMaxFile, os.O_RDWR|os.O_CREATE, 0666)
+				if err != nil {
+					log.Fatal(err)
+				}
+				defer f1.Close()
+				err = writeMMHeader(f1)
+				if err != nil {
+					log.Fatal(err)
+				}
+				_, err = f1.WriteString("\n")
+				if err != nil {
+					log.Fatal(err)
+				}
 			}
-			err = writeLCHeader(f)
-			if err != nil {
-				log.Fatal(err)
-			}
-			_, err = f.WriteString("\n")
-			if err != nil {
-				log.Fatal(err)
-			}
-			f1, err := os.OpenFile(s.minMaxFile, os.O_RDWR|os.O_CREATE, 0666)
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer f1.Close()
-			err = writeMMHeader(f1)
-			if err != nil {
-				log.Fatal(err)
-			}
-			_, err = f1.WriteString("\n")
-			if err != nil {
-				log.Fatal(err)
+			if s.stepVIFile() {
+				f, err = os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
+				if err != nil {
+					log.Fatal(err)
+				}
+				defer f.Close()
+				err = writeVIHeader(f)
+				if err != nil {
+					log.Fatal(err)
+				}
 			}
 			for _, w := range swrList {
 				var swr, r, x float64
@@ -266,33 +210,49 @@ func main() {
 					s.gamma = (s.s - 1.0) / (s.s + 1.0)
 					s.theta = float64(i)
 					s.trueCalc()
-					err = s.writeImpedance(f)
-					if err != nil {
-						log.Fatal(err)
+					if s.stepLCFile() || s.stepFitLCFile() {
+						err = s.writeImpedance(f)
+						if err != nil {
+							log.Fatal(err)
+						}
 					}
-					s.gammaTemp = s.gamma
-					s.thetaTemp = s.theta
-					s.copyExt(s.baseMaxSeries1)
-					switch s.which {
-					case "gamma":
-						s.gamma += s.gainTol * s.gamma
-					case "theta":
-						s.theta += s.phaseTol
-					case "both":
-						s.gamma += s.gainTol * s.gamma
-						s.theta += s.phaseTol
+					if !s.stepNoError() {
+						s.gammaTemp = s.gamma
+						s.thetaTemp = s.theta
+						s.copyExt(s.baseMaxSeries1)
+						switch s.which {
+						case "gamma":
+							s.gamma += s.gainTol * s.gamma
+						case "theta":
+							s.theta += s.phaseTol
+						case "both":
+							s.gamma += s.gainTol * s.gamma
+							s.theta += s.phaseTol
+						}
+						s.trueCalc()
+						r, x = s.bruteIt()
+						swr = calcSWR(r, x)
 					}
-					s.trueCalc()
-					r, x = s.bruteIt()
-					swr = calcSWR(r, x)
-
-					_, err = f.WriteString(fmt.Sprintf("%.3f,%.3f,%d,%.3f,%.3f,%.2f,",
-						r, x, s.region, s.seriesReact, s.parallelReact, swr))
-					if err != nil {
-						log.Fatal(err)
+					// swr = 1
+					if s.stepLCFile() || s.stepFitLCFile() {
+						swr = 1
+						_, err = f.WriteString(fmt.Sprintf("%.3f,%.3f,%d,%.3f,%.3f,%.2f,",
+							r, x, s.region, s.seriesReact, s.parallelReact, swr))
+						if err != nil {
+							log.Fatal(err)
+						}
+					}
+					if s.stepVIFile() {
+						_, err = f.WriteString(fmt.Sprintf("%.1f,%.0f,%.2f,%.2f,",
+							s.s, s.theta, s.seriesReact, s.parallelReact))
+						if err != nil {
+							log.Fatal(err)
+						}
 					}
 					for _, val := range freqList {
+						//fmt.Println("Entered freqList loop")
 						var l, c, l0, c0 float64
+						var matchC, matchL []*matchParts
 						var ok bool
 						freq, ok := freqs[val]
 						if !ok {
@@ -311,14 +271,87 @@ func main() {
 						//if called for, true LC values are approximated
 						//this also sets up the condition for all the cases below
 						if s.stepFitLC() {
+							// fmt.Println("called stepFitLC")
 							l0, c0 = l, c
-							c, ok = fitLC(c0, baseCap)
+							c, matchC, ok = fitLC(c0, baseCap) //ok indicates could not fit
 							if !ok {
 								c = 495.0
 							}
-							l, ok = fitLC(l0, baseInductor)
+							l, matchL, ok = fitLC(l0, baseInductor)
 							if !ok {
 								l = 495.0
+							}
+							s.matchC = matchC
+							s.matchL = matchL
+							// l, c = s.calcFittedLC()
+						}
+
+						if s.stepVI() {
+							var line string
+							s.calcImpedance(freq)
+							lMatch, cMatch := s.sumLC()
+							seriesZ := complex(0, 2.0*math.Pi*freq*lMatch)
+							parallelY := complex(0, -2.0*math.Pi*freq*cMatch)
+							switch s.region {
+							case 1:
+								line = ""
+								//calculate the admittance of the load
+								yLoad := s.calcYLoad()
+								//add load admittance to parallel capacitor admittance
+								yParallel := yLoad + parallelY
+								//convert admittance to impedance
+								zParallel := calcZfromY(yParallel)
+								//add series impedance of the inductors to the total
+								zTotal := zParallel + seriesZ
+								//voltage divider between the source impedance and the rest
+								vTotal := complex(s.vSource, 0.0) * (zTotal / (zTotal + complex(z0, 0)))
+								//votage divider between the series inductance and the parallel capacitors and the load
+								vParallel := vTotal * (zParallel / (zParallel + seriesZ))
+								//calculate capacitor currents
+								s.capCurrent(vParallel)
+								//calculate load current
+								//							iLoad := vParallel * yLoad
+								//total voltage across all inductors
+								vSeries := vTotal - vParallel
+								//current through the series inductors
+								iSeries := vSeries / seriesZ
+								//calculate the voltage across each inductor
+								s.indVoltage(iSeries)
+								line += fmt.Sprintf("%.2f,", cmplx.Abs(vParallel))
+								line = addCCurrent(line, s.matchC)
+								line += fmt.Sprintf("%f,", cmplx.Abs(iSeries))
+								line = addLVoltage(line, s.matchL)
+								//								fmt.Println(iLoad)
+							case 2:
+								line = ""
+								//calculate load impedance
+								zLoad := s.calcZLoad()
+								//add series inductor impedance to the load impedance
+								zSeries := zLoad + seriesZ
+								//convert to admittance
+								ySeries := calcYfromZ(zSeries)
+								//add capacitor admittance to teh whole
+								yTotal := ySeries + parallelY
+								//convert admittance to impedance
+								zTotal := calcZfromY(yTotal)
+								//voltage divider between the source resitance and the whole
+								vTotal := complex(s.vSource, 0.0) * (zTotal / (zTotal + complex(z0, 0)))
+								//calculate capacitor currents
+								s.capCurrent(vTotal)
+								//load and series inductors are in serries so current is the same
+								iSeries := vTotal * ySeries
+								//calculate the voltage across each inductor
+								s.indVoltage(iSeries)
+								// vLoad := iSeries * zLoad
+								// fmt.Println(vLoad)
+								line += fmt.Sprintf("%.2f,", cmplx.Abs(vTotal))
+								line = addCCurrent(line, s.matchC)
+								line += fmt.Sprintf("%f,", cmplx.Abs(iSeries))
+								line = addLVoltage(line, s.matchL)
+							}
+							_, err = f.WriteString(line)
+							if err != nil {
+								log.Fatal(err)
 							}
 						}
 						//if called for, the min/max values of the approximated LC are
@@ -337,23 +370,31 @@ func main() {
 						if s.stepDelMMFitNotFit() {
 							s.calcMinMax(l, c, freq, val)
 						}
-
-						err := s.writeLCValues(l, c, f)
+						if s.stepLCFile() || s.stepFitLCFile() {
+							err := s.writeLCValues(l, c, f)
+							if err != nil {
+								log.Fatal(err)
+							}
+							// _, err = f.WriteString("\n")
+							// if err != nil {
+							// 	log.Fatal(err)
+							// }
+						}
+						if s.options != "noError" {
+							s.gamma = s.gammaTemp
+							s.theta = s.thetaTemp
+						}
+					}
+					if s.stepVIFile() || s.stepLCFile() || s.stepFitLCFile() {
+						_, err := f.WriteString("\n")
 						if err != nil {
 							log.Fatal(err)
 						}
 					}
-					_, err = f.WriteString("\n")
-					if err != nil {
-						log.Fatal(err)
-					}
-
-					s.gamma = s.gammaTemp
-					s.theta = s.thetaTemp
 				}
 			}
 			//condition for writing min/max values
-			if s.stepMMLC() || s.stepMMFitLC() || s.stepDelMMFitNotFit() {
+			if s.stepMMFile() {
 				err = s.writeMMValues(f1)
 				if err != nil {
 					log.Fatal(err)
@@ -379,6 +420,9 @@ func main() {
 			s.normalize = item.Value
 		case "options":
 			s.options = item.Value
+		case "vSource":
+			y, _ := strconv.Atoi(item.Value)
+			s.vSource = float64(y)
 		default:
 			log.Fatal("Bad parameter passed", item.Name, item.Value)
 		}

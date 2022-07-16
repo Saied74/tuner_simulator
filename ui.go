@@ -9,22 +9,22 @@ import (
 
 var uiItems = cli.Items{
 	OrderList: []string{"fileName", "minMaxFile", "options", "gainTol", "phaseTol",
-		"noError", "normalize", "threshold", "which", "tolerance", "bruteForce"},
+		"vSource", "normalize", "threshold", "which", "bruteForce"},
 	ItemList: map[string]*cli.Item{
-		"noError": &cli.Item{
-			Name:      "noError",
-			Prompt:    "Run the simulation with no errors and write a csv file",
-			Response:  "Do I need this 1?",
-			Value:     "",
-			Validator: cli.ItemValidator(func(x string) bool { return true }),
-		},
-		"tolerance": &cli.Item{
-			Name:      "tolerance",
-			Prompt:    "Run tolerance study according to the tolerance list (needs to be fixed)",
-			Response:  "Do I need this? 2",
-			Value:     "",
-			Validator: cli.ItemValidator(func(x string) bool { return true }),
-		},
+		// "noError": &cli.Item{
+		// 	Name:      "noError",
+		// 	Prompt:    "Run the simulation with no errors and write a csv file",
+		// 	Response:  "Do I need this 1?",
+		// 	Value:     "",
+		// 	Validator: cli.ItemValidator(func(x string) bool { return true }),
+		// },
+		// "tolerance": &cli.Item{
+		// 	Name:      "tolerance",
+		// 	Prompt:    "Run tolerance study according to the tolerance list (needs to be fixed)",
+		// 	Response:  "Do I need this? 2",
+		// 	Value:     "",
+		// 	Validator: cli.ItemValidator(func(x string) bool { return true }),
+		// },
 		"bruteForce": &cli.Item{
 			Name:      "bruteForce",
 			Prompt:    "Brute force through the error and see",
@@ -62,7 +62,7 @@ var uiItems = cli.Items{
 		},
 		"which": &cli.Item{
 			Name:      "which",
-			Prompt:    "Select theta or gamma (or both) for tolerance study",
+			Prompt:    "Select theta or gamma (or both) or noError for tolerance study",
 			Response:  "Do I need this 4?",
 			Value:     "",
 			Validator: whichValidator,
@@ -81,6 +81,13 @@ var uiItems = cli.Items{
 			Response:  "Do I need this 4?",
 			Value:     "normalize",
 			Validator: normalValidator,
+		},
+		"vSource": &cli.Item{
+			Name:      "vSource",
+			Prompt:    "Source voltage in volts",
+			Response:  "useless",
+			Value:     "225",
+			Validator: voltageValidator,
 		},
 		/*
 			In all cases below the results are written to file.
@@ -140,6 +147,14 @@ var phaseValidator = cli.ItemValidator(func(x string) bool {
 	return true
 })
 
+var voltageValidator = cli.ItemValidator(func(x string) bool {
+	_, err := strconv.Atoi(x)
+	if err != nil {
+		return false
+	}
+	return true
+})
+
 var whichValidator = cli.ItemValidator(func(x string) bool {
 	switch x {
 	case "theta":
@@ -147,6 +162,8 @@ var whichValidator = cli.ItemValidator(func(x string) bool {
 	case "gamma":
 		return true
 	case "both":
+		return true
+	case "noError":
 		return true
 	default:
 		return false

@@ -1,14 +1,17 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"math"
+	"math/cmplx"
 )
 
 const (
-	cMin = 5.0e-12
-	lMin = 10.0e-9
-	z0   = 50.0
+	cMin    = 5.0e-12
+	lMin    = 10.0e-9
+	z0      = 50.0
+	epsilon = math.SmallestNonzeroFloat64 + math.SmallestNonzeroFloat64
 )
 
 func makeSmith(home string) *smith {
@@ -25,6 +28,29 @@ func makeSmith(home string) *smith {
 		options:        "MMFitLC",
 		minMax:         make(map[string]*lcMinMax),
 		baseMaxSeries1: &extreme{parallelReact: -100000.0, seriesReact: -100000.0, basePoint: &smithPoint{}},
+		matchC: []*matchParts{ //ordered from the highest value to the lowest value
+			&matchParts{},
+			&matchParts{},
+			&matchParts{},
+			&matchParts{},
+			&matchParts{},
+			&matchParts{},
+			&matchParts{},
+			&matchParts{},
+			&matchParts{},
+		},
+		matchL: []*matchParts{
+			&matchParts{},
+			&matchParts{},
+			&matchParts{},
+			&matchParts{},
+			&matchParts{},
+			&matchParts{},
+			&matchParts{},
+			&matchParts{},
+			&matchParts{},
+		},
+		vSource: 235.0,
 	}
 }
 
@@ -39,6 +65,30 @@ func (s *smith) resetSmith(home string) *smith {
 	ss.normalize = s.normalize
 	ss.options = s.options
 	ss.minMax = s.minMax
+	ss.matchC = []*matchParts{ //ordered from the highest value to the lowest value
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+	}
+	ss.matchL = []*matchParts{
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+	}
+	ss.vSource = s.vSource
+	ss.which = s.which
 	return ss
 }
 
@@ -49,6 +99,10 @@ func (s *smith) trueCalc() {
 		s.rotateRight()
 	case 2:
 		s.rotateLeft()
+	case 3:
+		s.noParallel()
+	case 4:
+		s.noSeries()
 	default:
 		log.Fatal("bad region")
 	}
@@ -65,6 +119,14 @@ func (s *smith) locate() {
 	zSq := s.point0.r*s.point0.r + s.point0.x*s.point0.x
 	s.point0.g = s.point0.r / zSq
 	s.point0.b = -s.point0.x / zSq
+	if math.Abs(s.point0.r-1.0) < epsilon {
+		s.region = 3
+		return
+	}
+	if math.Abs(s.point0.g-1.0) < epsilon {
+		s.region = 4
+		return
+	}
 	if s.point0.r > 1.0 {
 		s.region = 1
 		return
@@ -111,6 +173,30 @@ func (s *smith) rotateLeft() {
 	s.parallelReact = -1.0 / s.parallelSuscep
 }
 
+//noParallel is the case when the original point (point 0) is on the r=1 circle
+//and only a series inductance is needed to mach the impedance
+func (s *smith) noParallel() {
+	s.point1.gammaReal = (1.0 - s.point0.g) / (1.0 + 3*s.point0.g)
+	s.point1.gammaImag = -math.Sqrt(s.point1.gammaReal - s.point1.gammaReal*s.point1.gammaReal)
+	s.calcEndPoint()
+	// s.parallelSuscep = s.point1.b - s.point0.b
+	// s.parallelReact = -1.0 / s.parallelSuscep
+	s.seriesReact = -s.point1.x
+	s.seriesSuscep = -1.0 / s.seriesReact
+}
+
+//noSeries is the case when the original point (point 0) is on the g=1 circle
+//and only a parallel parallel capacitance is needed to match the impedance
+func (s *smith) noSeries() {
+	s.point1.gammaReal = (s.point0.r - 1.0) / (3*s.point0.r + 1)
+	s.point1.gammaImag = math.Sqrt(-s.point1.gammaReal - s.point1.gammaReal*s.point1.gammaReal)
+	s.calcEndPoint()
+	// s.seriesReact = s.point1.x - s.point0.x
+	// s.seriesSuscep = -1.0 / s.seriesReact
+	s.parallelSuscep = -s.point1.b
+	s.parallelReact = -1.0 / s.parallelSuscep
+}
+
 func (s *smith) calcEndPoint() {
 	gammaSq := s.point1.gammaReal*s.point1.gammaReal + s.point1.gammaImag*s.point1.gammaImag
 	denom := 1 + gammaSq - 2*s.point1.gammaReal
@@ -119,47 +205,6 @@ func (s *smith) calcEndPoint() {
 	zSq := s.point1.r*s.point1.r + s.point1.x*s.point1.x
 	s.point1.g = s.point1.r / zSq
 	s.point1.b = -s.point1.x / zSq
-}
-
-//// TODO: this needs to fixed to account for both gamma and theta tolerance
-func (s *smith) calcTolerance() {
-	s.tolerance = []sensitivity{}
-	for _, t := range tolerance {
-		sen := sensitivity{}
-		s.gamma += t * s.gamma
-
-		s.locate()
-		switch s.region {
-		case 1:
-			s.rotateRight()
-		case 2:
-			s.rotateLeft()
-		default:
-			log.Fatal("bad region")
-		}
-		sen.region = s.region
-		sen.parallelReactance = s.parallelReact
-		sen.seriesReactance = s.seriesReact
-		s.tolerance = append(s.tolerance, sen)
-
-		s.gamma = s.gammaTemp
-		s.theta += t * s.theta
-		s.locate()
-		switch s.region {
-		case 1:
-			s.rotateRight()
-		case 2:
-			s.rotateLeft()
-		default:
-			log.Fatal("bad region")
-		}
-		sen.region = s.region
-		sen.parallelReactance = s.parallelReact
-		sen.seriesReactance = s.seriesReact
-		s.tolerance = append(s.tolerance, sen)
-		s.theta = s.thetaTemp
-		//s.tolerance = append(s.tolerance, float64(s.region), s.parallelReact, s.seriesReact)
-	}
 }
 
 func (s *smith) bruteIt() (float64, float64) {
@@ -212,15 +257,6 @@ func calcSWR(r, x float64) float64 {
 	return swr
 }
 
-func (s *smith) calcFreqs() {
-	s.freqs = []float64{}
-	for _, freq := range freqList {
-		c := -1.0 / (2.0 * math.Pi * freqs[freq] * s.parallelReact * z0)
-		l := (s.seriesReact * z0) / (2.0 * math.Pi * freqs[freq])
-		s.freqs = append(s.freqs, c, l)
-	}
-}
-
 func (s *smith) copyExt(e *extreme) {
 
 	e.s = s.s
@@ -264,18 +300,31 @@ func normalizeLC(lc float64) (float64, string) {
 }
 
 //approximate LC values using baseCap and baseInductor values
-func fitLC(lc float64, base []float64) (float64, bool) {
+func fitLC(lc float64, base []float64) (float64, []*matchParts, bool) {
+	match := []*matchParts{ //ordered from the highest value to the lowest value
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+		&matchParts{},
+	}
 	var biggest float64
 	for _, b := range base {
 		biggest += b
 	}
 	if lc > biggest {
-		return lc, false
+		return lc, match, false
 	}
 	smallest := base[len(base)-1]
 	y := 0.0
-	for _, item := range base {
+	for i, item := range base {
 		if lc > item {
+			match[i].inPlay = true
+			match[i].value = item
 			lc -= item
 			y += item
 		}
@@ -283,64 +332,36 @@ func fitLC(lc float64, base []float64) (float64, bool) {
 	if math.Abs(lc-smallest) < smallest/2 {
 		y += smallest
 	}
-	return y, true
+	return y, match, true
 }
 
-//If true run min/max true LC values.  No more processing will proceed.
-func (s *smith) stepMMLC() bool {
-	switch s.options {
-	case "MMLC":
-		return true
+func (s *smith) calcFittedLC() (float64, float64) {
+	var l, c float64
+	for _, lItem := range s.matchL {
+		if lItem.inPlay {
+			l += lItem.value
+		}
 	}
-	return false
+	for _, cItem := range s.matchC {
+		if cItem.inPlay {
+			l += cItem.value
+		}
+	}
+	return l, c
 }
 
-//If true, approximate LC values using baseCap and baseInductor values
-//also set up the condition for running MMFitLC, DelMMFitNotFit, and DelMMFitNotFit
-func (s *smith) stepFitLC() bool {
-	switch s.options {
-	case "FitLC":
-		return true
-	case "MMFitLC":
-		return true
-	case "DelFitNotFit":
-		return true
-	case "DelMMFitNotFit":
-		return true
+func addCCurrent(s string, matchC []*matchParts) string {
+	for _, c := range matchC {
+		s += fmt.Sprintf("%.2f,", cmplx.Abs(c.iThrough))
 	}
-	return false
+	return s
 }
 
-//if true calculate the min/max of the approximated LC values
-//no more processing will proceed past this point
-func (s *smith) stepMMFitLC() bool {
-	switch s.options {
-	case "MMFitLC":
-		return true
+func addLVoltage(s string, matchL []*matchParts) string {
+	for _, l := range matchL {
+		s += fmt.Sprintf("%.2f,", cmplx.Abs(l.vAcross))
 	}
-	return false
-}
-
-//If true, claculate the difference between approximated and true LC lcValues
-//also set up the condition for running stepDelMMFitNotFit
-func (s *smith) stepDelFitNotFit() bool {
-	switch s.options {
-	case "DelFitNotFit":
-		return true
-	case "DelMMFitNotFit":
-		return true
-	}
-	return false
-}
-
-//if true, calculate the difference between minimum and maximum of true and
-//approximated LC values.
-func (s *smith) stepDelMMFitNotFit() bool {
-	switch s.options {
-	case "DelMMFitNotFit":
-		return true
-	}
-	return false
+	return s
 }
 
 func (s *smith) calcMinMax(l, c, freq float64, val string) {
@@ -371,10 +392,30 @@ func (s *smith) calcMinMax(l, c, freq float64, val string) {
 	}
 }
 
+func (s *smith) calcYLoad() complex128 {
+	g := s.baseMaxSeries1.basePoint.g * z0
+	b := s.baseMaxSeries1.basePoint.b * z0
+	return complex(g, b)
+}
+
 func (s *smith) calcZLoad() complex128 {
 	r := s.baseMaxSeries1.basePoint.r * z0
 	x := s.baseMaxSeries1.basePoint.x * z0
 	return complex(r, x)
+}
+
+func calcZfromY(y complex128) complex128 {
+	g := real(y)
+	b := imag(y)
+	r, x := getImp(g, b)
+	return complex(r, x)
+}
+
+func calcYfromZ(z complex128) complex128 {
+	r := real(z)
+	x := imag(z)
+	g, b := getAdm(r, x)
+	return complex(g, b)
 }
 
 //for region 1 capacitor parallel with the load
@@ -388,4 +429,49 @@ func (s *smith) calcRegion2Z(z complex128) complex128 {
 	z1 := z + complex(0, s.seriesReact)
 	z2 := complex(0, s.parallelReact*z0)
 	return (z1 * z2) / (z1 + z2)
+}
+
+func (s *smith) calcImpedance(f float64) {
+	for i := range s.matchC {
+		if s.matchC[i].inPlay {
+			s.matchC[i].impedance = (-1.0) / (2 * math.Pi * s.matchC[i].value * f)
+		}
+	}
+	for i := range s.matchL {
+		if s.matchL[i].inPlay {
+			s.matchL[i].impedance = 2 * math.Pi * s.matchL[i].value * f
+		}
+	}
+}
+
+func (s *smith) sumLC() (float64, float64) {
+	var l, c float64
+	for _, match := range s.matchL {
+		if match.inPlay {
+			l += match.value
+		}
+	}
+	for _, match := range s.matchC {
+		if match.inPlay {
+			c += match.value
+		}
+	}
+	return l, c
+}
+
+//also returns the load current
+func (s *smith) capCurrent(vParallel complex128) {
+	for i := range s.matchC {
+		if s.matchC[i].inPlay {
+			s.matchC[i].iThrough = vParallel / complex(0, s.matchC[i].impedance)
+		}
+	}
+}
+
+func (s *smith) indVoltage(iSeries complex128) {
+	for i := range s.matchL {
+		if s.matchL[i].inPlay {
+			s.matchL[i].vAcross = iSeries * complex(0, s.matchL[i].impedance)
+		}
+	}
 }
