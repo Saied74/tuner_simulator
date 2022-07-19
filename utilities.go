@@ -350,18 +350,18 @@ func (s *smith) calcFittedLC() (float64, float64) {
 	return l, c
 }
 
-func addCCurrent(s string, matchC []*matchParts) string {
-	for _, c := range matchC {
-		s += fmt.Sprintf("%.2f,", cmplx.Abs(c.iThrough))
+func (s *smith) addCCurrent(line string) string {
+	for _, c := range s.matchC {
+		line += fmt.Sprintf("%.2f,", cmplx.Abs(c.iThrough))
 	}
-	return s
+	return line
 }
 
-func addLVoltage(s string, matchL []*matchParts) string {
-	for _, l := range matchL {
-		s += fmt.Sprintf("%.2f,", cmplx.Abs(l.vAcross))
+func (s *smith) addLVoltage(line string) string {
+	for _, l := range s.matchL {
+		line += fmt.Sprintf("%.2f,", cmplx.Abs(l.vAcross))
 	}
-	return s
+	return line
 }
 
 func (s *smith) calcMinMax(l, c, freq float64, val string) {
@@ -393,8 +393,12 @@ func (s *smith) calcMinMax(l, c, freq float64, val string) {
 }
 
 func (s *smith) calcYLoad() complex128 {
-	g := s.baseMaxSeries1.basePoint.g * z0
-	b := s.baseMaxSeries1.basePoint.b * z0
+	r := s.point0.r * z0
+	x := s.point0.x * z0
+	// r := s.baseMaxSeries1.basePoint.r * z0
+	// x := s.baseMaxSeries1.basePoint.x * z0
+	//fmt.Println(r, x)
+	g, b := getAdm(r, x)
 	return complex(g, b)
 }
 
@@ -434,12 +438,12 @@ func (s *smith) calcRegion2Z(z complex128) complex128 {
 func (s *smith) calcImpedance(f float64) {
 	for i := range s.matchC {
 		if s.matchC[i].inPlay {
-			s.matchC[i].impedance = (-1.0) / (2 * math.Pi * s.matchC[i].value * f)
+			s.matchC[i].impedance = complex(0.0, (-1.0)/(2*math.Pi*s.matchC[i].value*f))
 		}
 	}
 	for i := range s.matchL {
 		if s.matchL[i].inPlay {
-			s.matchL[i].impedance = 2 * math.Pi * s.matchL[i].value * f
+			s.matchL[i].impedance = complex(0.0, 2*math.Pi*s.matchL[i].value*f)
 		}
 	}
 }
@@ -463,7 +467,7 @@ func (s *smith) sumLC() (float64, float64) {
 func (s *smith) capCurrent(vParallel complex128) {
 	for i := range s.matchC {
 		if s.matchC[i].inPlay {
-			s.matchC[i].iThrough = vParallel / complex(0, s.matchC[i].impedance)
+			s.matchC[i].iThrough = vParallel / s.matchC[i].impedance
 		}
 	}
 }
@@ -471,7 +475,7 @@ func (s *smith) capCurrent(vParallel complex128) {
 func (s *smith) indVoltage(iSeries complex128) {
 	for i := range s.matchL {
 		if s.matchL[i].inPlay {
-			s.matchL[i].vAcross = iSeries * complex(0, s.matchL[i].impedance)
+			s.matchL[i].vAcross = iSeries * s.matchL[i].impedance
 		}
 	}
 }

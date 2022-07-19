@@ -12,6 +12,10 @@ import (
 	"github.com/Saied74/cli"
 )
 
+const (
+	bigImpedance = complex(0, 100000)
+)
+
 type sensitivity struct {
 	region            int
 	parallelReactance float64
@@ -41,7 +45,7 @@ type extreme struct {
 type matchParts struct {
 	inPlay    bool
 	value     float64
-	impedance float64
+	impedance complex128
 	vAcross   complex128
 	iThrough  complex128
 	vToGround complex128
@@ -288,14 +292,22 @@ func main() {
 
 						if s.stepVI() {
 							var line string
+							var parallelY complex128
+							s.copyExt(s.baseMaxSeries1)
 							s.calcImpedance(freq)
-							lMatch, cMatch := s.sumLC()
-							seriesZ := complex(0, 2.0*math.Pi*freq*lMatch)
-							parallelY := complex(0, -2.0*math.Pi*freq*cMatch)
+							// lMatch, cMatch := s.sumLC()
+							seriesZ := complex(0, 2.0*math.Pi*freq*l) //Match)
+							if math.Abs(c) < epsilon {
+								parallelY = bigImpedance
+							} else {
+								parallelY = complex(0, (2.0 * math.Pi * freq * c)) //Match))
+							}
+							//fmt.Println(c, parallelY)
 							switch s.region {
 							case 1:
 								line = ""
 								//calculate the admittance of the load
+								// fmt.Println(s.point0.r, s.point0.x)
 								yLoad := s.calcYLoad()
 								//add load admittance to parallel capacitor admittance
 								yParallel := yLoad + parallelY
@@ -303,6 +315,7 @@ func main() {
 								zParallel := calcZfromY(yParallel)
 								//add series impedance of the inductors to the total
 								zTotal := zParallel + seriesZ
+								// fmt.Println(yLoad, yParallel, zParallel, zTotal)
 								//voltage divider between the source impedance and the rest
 								vTotal := complex(s.vSource, 0.0) * (zTotal / (zTotal + complex(z0, 0)))
 								//votage divider between the series inductance and the parallel capacitors and the load
@@ -314,13 +327,19 @@ func main() {
 								//total voltage across all inductors
 								vSeries := vTotal - vParallel
 								//current through the series inductors
-								iSeries := vSeries / seriesZ
+								var iSeries complex128
+								if cmplx.Abs(seriesZ) > epsilon {
+									iSeries = vSeries / seriesZ
+								} else {
+									zLoad := calcZfromY(yLoad)
+									iSeries = vSeries / zLoad
+								}
 								//calculate the voltage across each inductor
 								s.indVoltage(iSeries)
 								line += fmt.Sprintf("%.2f,", cmplx.Abs(vParallel))
-								line = addCCurrent(line, s.matchC)
+								line = s.addCCurrent(line)
 								line += fmt.Sprintf("%f,", cmplx.Abs(iSeries))
-								line = addLVoltage(line, s.matchL)
+								line = s.addLVoltage(line)
 								//								fmt.Println(iLoad)
 							case 2:
 								line = ""
@@ -345,9 +364,9 @@ func main() {
 								// vLoad := iSeries * zLoad
 								// fmt.Println(vLoad)
 								line += fmt.Sprintf("%.2f,", cmplx.Abs(vTotal))
-								line = addCCurrent(line, s.matchC)
+								line = s.addCCurrent(line)
 								line += fmt.Sprintf("%f,", cmplx.Abs(iSeries))
-								line = addLVoltage(line, s.matchL)
+								line = s.addLVoltage(line)
 							}
 							_, err = f.WriteString(line)
 							if err != nil {
