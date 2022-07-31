@@ -38,18 +38,18 @@ func (s *smith) stepVIFile() bool {
 }
 
 //should the min and max of L & C values file be openned and written
-func (s *smith) stepMMFile() bool {
-	if s.stepMMLC() {
-		return true
-	}
-	if s.stepMMFitLC() {
-		return true
-	}
-	if s.stepDelMMFitNotFit() {
-		return true
-	}
-	return false
-}
+// func (s *smith) stepMMFile() bool {
+// 	if s.stepMMLC() {
+// 		return true
+// 	}
+// 	if s.stepMMFitLC() {
+// 		return true
+// 	}
+// 	if s.stepDelMMFitNotFit() {
+// 		return true
+// 	}
+// 	return false
+// }
 
 //If true, approximate LC values using baseCap and baseInductor values
 //also set up the condition for running MMFitLC, DelMMFitNotFit, and DelMMFitNotFit
@@ -78,13 +78,13 @@ func (s *smith) stepVI() bool {
 }
 
 //If true run min/max true LC values.  No more processing will proceed.
-func (s *smith) stepMMLC() bool {
-	switch s.options {
-	case "MMLC":
-		return true
-	}
-	return false
-}
+// func (s *smith) stepMMLC() bool {
+// 	switch s.options {
+// 	case "MMLC":
+// 		return true
+// 	}
+// 	return false
+// }
 
 //if true calculate the min/max of the approximated LC values
 //no more processing will proceed past this point
@@ -98,22 +98,22 @@ func (s *smith) stepMMFitLC() bool {
 
 //If true, claculate the difference between approximated and true LC lcValues
 //also set up the condition for running stepDelMMFitNotFit
-func (s *smith) stepDelFitNotFit() bool {
-	switch s.options {
-	case "DelFitNotFit":
-		return true
-	case "DelMMFitNotFit":
-		return true
-	}
-	return false
-}
+// func (s *smith) stepDelFitNotFit() bool {
+// 	switch s.options {
+// 	case "DelFitNotFit":
+// 		return true
+// 	case "DelMMFitNotFit":
+// 		return true
+// 	}
+// 	return false
+// }
 
 //if true, calculate the difference between minimum and maximum of true and
 //approximated LC values.
-func (s *smith) stepDelMMFitNotFit() bool {
-	switch s.options {
-	case "DelMMFitNotFit":
-		return true
-	}
-	return false
-}
+// func (s *smith) stepDelMMFitNotFit() bool {
+// 	switch s.options {
+// 	case "DelMMFitNotFit":
+// 		return true
+// 	}
+// 	return false
+// }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/cmplx"
 	"os"
 	"strings"
 )
@@ -106,12 +107,18 @@ func writeMMHeader(f *os.File) error {
 }
 
 func (s *smith) writeMMValues(f *os.File) error {
-	_, err := f.WriteString("Max,")
+	// _, err := f.WriteString("Max,")
+	// if err != nil {
+	// 	return err
+	// }
+	var line = ",C,L\n"
+	_, err := f.WriteString(line)
 	if err != nil {
 		return err
 	}
-	var line = ""
+
 	for _, val := range freqList {
+		line = val + ","
 		mm := *s.minMax[val]
 		if strings.HasPrefix(s.normalize, "norm") {
 			c, cFix := normalizeLC(mm.maxC)
@@ -123,54 +130,55 @@ func (s *smith) writeMMValues(f *os.File) error {
 		if !strings.HasPrefix(s.normalize, "norm") {
 			line += fmt.Sprintf("%e,%e,", mm.maxC, mm.maxL)
 		}
-	}
-	_, err = f.WriteString(line)
-	if err != nil {
-		return err
-	}
-	_, err = f.WriteString("\n")
-	if err != nil {
-		return err
-	}
-	_, err = f.WriteString("Min,")
-	if err != nil {
-		return err
-	}
-	line = ""
-	for _, val := range freqList {
-		mm := *s.minMax[val]
-		if strings.HasPrefix(s.normalize, "norm") {
-			c, cFix := normalizeLC(mm.minC)
-			cFix += "F"
-			l, lFix := normalizeLC(mm.minL)
-			lFix += "H"
-			line += fmt.Sprintf("%.2f %s,%.2f %s,", c, cFix, l, lFix)
-		}
-		if !strings.HasPrefix(s.normalize, "norm") {
-			line += fmt.Sprintf("%e,%e,", mm.minC, mm.minL)
-		}
-	}
-	_, err = f.WriteString(line)
-	if err != nil {
-		return err
-	}
-	_, err = f.WriteString("\n")
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-//write the results of the tolerance study (region number)
-func (s *smith) writeTolerance(f *os.File) error {
-	for _, item := range s.tolerance {
-		_, err := f.WriteString(fmt.Sprintf("%d,", item.region))
+		line += "\n"
+		_, err = f.WriteString(line)
 		if err != nil {
 			return err
 		}
 	}
+	// _, err = f.WriteString("\n")
+	// if err != nil {
+	// 	return err
+	// }
+	// _, err = f.WriteString("Min,")
+	// if err != nil {
+	// 	return err
+	// }
+	// line = ""
+	// for _, val := range freqList {
+	// 	mm := *s.minMax[val]
+	// 	if strings.HasPrefix(s.normalize, "norm") {
+	// 		c, cFix := normalizeLC(mm.minC)
+	// 		cFix += "F"
+	// 		l, lFix := normalizeLC(mm.minL)
+	// 		lFix += "H"
+	// 		line += fmt.Sprintf("%.2f %s,%.2f %s,", c, cFix, l, lFix)
+	// 	}
+	// 	if !strings.HasPrefix(s.normalize, "norm") {
+	// 		line += fmt.Sprintf("%e,%e,", mm.minC, mm.minL)
+	// 	}
+	// }
+	// _, err = f.WriteString(line)
+	// if err != nil {
+	// 	return err
+	// }
+	// _, err = f.WriteString("\n")
+	// if err != nil {
+	// 	return err
+	// }
 	return nil
 }
+
+// //write the results of the tolerance study (region number)
+// func (s *smith) writeTolerance(f *os.File) error {
+// 	for _, item := range s.tolerance {
+// 		_, err := f.WriteString(fmt.Sprintf("%d,", item.region))
+// 		if err != nil {
+// 			return err
+// 		}
+// 	}
+// 	return nil
+// }
 
 //writes the actual Ls and Cs based on freequency of bands
 //past use, may not have any future use
@@ -200,6 +208,71 @@ func (s *smith) writeLCValues(l, c float64, f *os.File) error {
 	_, err := f.WriteString(line)
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+func (m maxVI) writeMaxVI(f1 *os.File) error {
+	line := " ,"
+	line += "Cap Voltage,"
+	for _, c := range baseCap {
+		cNorm, suffix := normalizeLC(c)
+		line += fmt.Sprintf("%.2f %sF,", cNorm, suffix)
+	}
+	line = strings.TrimSuffix(line, ",")
+	line += "\n"
+	_, err := f1.WriteString(line)
+	if err != nil {
+		return err
+	}
+	for _, freqVal := range freqList {
+		key := freqVal + " C"
+		line = key + ","
+		for i, cMatch := range m[key] {
+			if i == 0 {
+				line += fmt.Sprintf("%.0f,", cmplx.Abs(cMatch.vAcross))
+			} else {
+				line += fmt.Sprintf("%.2f,", cmplx.Abs(cMatch.iThrough))
+			}
+		}
+		line = strings.TrimSuffix(line, ",")
+		line += "\n"
+		_, err := f1.WriteString(line)
+		if err != nil {
+			return err
+		}
+
+	}
+	_, err = f1.WriteString("\n\n\n\n")
+
+	line = " ,"
+	line += "Ind Current,"
+	for _, l := range baseInductor {
+		lNorm, suffix := normalizeLC(l)
+		line += fmt.Sprintf("%.1f %sH,", lNorm, suffix)
+	}
+	line = strings.TrimSuffix(line, ",")
+	line += "\n"
+	_, err = f1.WriteString(line)
+	if err != nil {
+		return err
+	}
+	for _, freqVal := range freqList {
+		key := freqVal + " L"
+		line = key + ","
+		for i, lMatch := range m[key] {
+			if i == 0 {
+				line += fmt.Sprintf("%.1f,", cmplx.Abs(lMatch.iThrough))
+			} else {
+				line += fmt.Sprintf("%.0f,", cmplx.Abs(lMatch.vAcross))
+			}
+		}
+		line = strings.TrimSuffix(line, ",")
+		line += "\n"
+		_, err := f1.WriteString(line)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

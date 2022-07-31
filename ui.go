@@ -9,25 +9,11 @@ import (
 
 var uiItems = cli.Items{
 	OrderList: []string{"fileName", "minMaxFile", "options", "gainTol", "phaseTol",
-		"vSource", "normalize", "threshold", "which", "bruteForce"},
+		"vSource", "power", "capQ", "indQ", "normalize", "threshold", "which", "bruteForce"},
 	ItemList: map[string]*cli.Item{
-		// "noError": &cli.Item{
-		// 	Name:      "noError",
-		// 	Prompt:    "Run the simulation with no errors and write a csv file",
-		// 	Response:  "Do I need this 1?",
-		// 	Value:     "",
-		// 	Validator: cli.ItemValidator(func(x string) bool { return true }),
-		// },
-		// "tolerance": &cli.Item{
-		// 	Name:      "tolerance",
-		// 	Prompt:    "Run tolerance study according to the tolerance list (needs to be fixed)",
-		// 	Response:  "Do I need this? 2",
-		// 	Value:     "",
-		// 	Validator: cli.ItemValidator(func(x string) bool { return true }),
-		// },
 		"bruteForce": &cli.Item{
 			Name:      "bruteForce",
-			Prompt:    "Brute force through the error and see",
+			Prompt:    "Run simulation",
 			Response:  "Do I need this 3?",
 			Value:     "",
 			Validator: cli.ItemValidator(func(x string) bool { return true }),
@@ -86,8 +72,29 @@ var uiItems = cli.Items{
 			Name:      "vSource",
 			Prompt:    "Source voltage in volts",
 			Response:  "useless",
-			Value:     "225",
+			Value:     "282",
 			Validator: voltageValidator,
+		},
+		"power": &cli.Item{
+			Name:      "power",
+			Prompt:    "Power in Watts",
+			Response:  "useless",
+			Value:     "200",
+			Validator: powerValidator,
+		},
+		"capQ": &cli.Item{
+			Name:      "capQ",
+			Prompt:    "capacitor Q",
+			Response:  "useless",
+			Value:     "1000",
+			Validator: qValidator,
+		},
+		"indQ": &cli.Item{
+			Name:      "indQ",
+			Prompt:    "inductor Q",
+			Response:  "useless",
+			Value:     "100",
+			Validator: qValidator,
 		},
 		/*
 			In all cases below the results are written to file.
@@ -103,9 +110,9 @@ var uiItems = cli.Items{
 		*/
 		"options": &cli.Item{
 			Name:      "options",
-			Prompt:    "Select: LC, MMLC, FitLC, MMFitLC, DelFitNotFit, DelMMFitNotFit, VI",
+			Prompt:    "Select: LC, FitLC, VI",
 			Response:  "Do I need this 4?",
-			Value:     "MMFitLC",
+			Value:     "LC",
 			Validator: optionValidator,
 		},
 	},
@@ -148,6 +155,22 @@ var phaseValidator = cli.ItemValidator(func(x string) bool {
 })
 
 var voltageValidator = cli.ItemValidator(func(x string) bool {
+	_, err := strconv.Atoi(x)
+	if err != nil {
+		return false
+	}
+	return true
+})
+
+var powerValidator = cli.ItemValidator(func(x string) bool {
+	_, err := strconv.Atoi(x)
+	if err != nil {
+		return false
+	}
+	return true
+})
+
+var qValidator = cli.ItemValidator(func(x string) bool {
 	_, err := strconv.Atoi(x)
 	if err != nil {
 		return false
@@ -198,15 +221,7 @@ var optionValidator = cli.ItemValidator(func(x string) bool {
 	switch x {
 	case "LC":
 		return true
-	case "MMLC":
-		return true
 	case "FitLC":
-		return true
-	case "MMFitLC":
-		return true
-	case "DelFitNotFit":
-		return true
-	case "DelMMFitNotFit":
 		return true
 	case "VI":
 		return true

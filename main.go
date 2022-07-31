@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"math"
 	"math/cmplx"
 	"os"
 	"strconv"
@@ -14,6 +13,7 @@ import (
 
 const (
 	bigImpedance = complex(0, 100000)
+	zSource      = complex(50, 0)
 )
 
 type sensitivity struct {
@@ -43,12 +43,13 @@ type extreme struct {
 }
 
 type matchParts struct {
-	inPlay    bool
-	value     float64
-	impedance complex128
-	vAcross   complex128
-	iThrough  complex128
-	vToGround complex128
+	inPlay     bool
+	value      float64
+	resistance float64
+	impedance  complex128
+	vAcross    complex128
+	iThrough   complex128
+	vToGround  complex128
 }
 
 type smith struct {
@@ -56,8 +57,8 @@ type smith struct {
 	minMaxFile     string
 	s              float64 //swr
 	gamma          float64 //magnitude of the reflection coefficient
-	gammaTemp      float64 //phase of the reflection coefficient
-	theta          float64
+	gammaTemp      float64
+	theta          float64 //phase of the reflection coefficient
 	thetaTemp      float64
 	point0         *smithPoint
 	point1         *smithPoint
@@ -67,7 +68,7 @@ type smith struct {
 	seriesReact    float64
 	seriesSuscep   float64
 	freqs          []float64
-	tolerance      []sensitivity
+	// tolerance      []sensitivity
 	which          string //use gain error, phase error, or both
 	iteration      int
 	threshold      float64
@@ -79,7 +80,10 @@ type smith struct {
 	baseMaxSeries1 *extreme
 	matchC         []*matchParts //ordered from the highest value to the lowest value
 	matchL         []*matchParts //ordered from the highest value to the lowest value
+	capQ           float64
+	indQ           float64
 	vSource        float64
+	power          float64
 }
 
 type lcMinMax struct {
@@ -89,6 +93,8 @@ type lcMinMax struct {
 	minL float64
 	maxL float64
 }
+
+type maxVI map[string][]*matchParts
 
 var swrList = []float64{1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0}
 
@@ -156,7 +162,7 @@ func main() {
 
 		case "bruteForce":
 			// fmt.Println("Entered bruteForce block")
-			var f, f1 *os.File
+			var f, f1, f2 *os.File
 			var err error
 			//s := s.resetSmith()
 			if s.stepLCFile() || s.stepFitLCFile() {
@@ -177,22 +183,11 @@ func main() {
 				if err != nil {
 					log.Fatal(err)
 				}
-
-			}
-			if s.stepMMFile() {
-				f1, err := os.OpenFile(s.minMaxFile, os.O_RDWR|os.O_CREATE, 0666)
+				f1, err = os.OpenFile(s.minMaxFile, os.O_RDWR|os.O_CREATE, 0666)
 				if err != nil {
 					log.Fatal(err)
 				}
 				defer f1.Close()
-				err = writeMMHeader(f1)
-				if err != nil {
-					log.Fatal(err)
-				}
-				_, err = f1.WriteString("\n")
-				if err != nil {
-					log.Fatal(err)
-				}
 			}
 			if s.stepVIFile() {
 				f, err = os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
@@ -204,7 +199,18 @@ func main() {
 				if err != nil {
 					log.Fatal(err)
 				}
+				f1, err = os.OpenFile(s.minMaxFile, os.O_RDWR|os.O_CREATE, 0666)
+				if err != nil {
+					log.Fatal(err)
+				}
+				defer f1.Close()
+				f2, err = os.OpenFile("maxEngagedFile.csv", os.O_RDWR|os.O_CREATE, 0666)
+				if err != nil {
+					log.Fatal(err)
+				}
+				defer f2.Close()
 			}
+			m := makeMaxVI()
 			for _, w := range swrList {
 				var swr, r, x float64
 				for i := 0; i < 360; i++ {
@@ -253,12 +259,12 @@ func main() {
 							log.Fatal(err)
 						}
 					}
-					for _, val := range freqList {
+					for _, freqVal := range freqList {
 						//fmt.Println("Entered freqList loop")
 						var l, c, l0, c0 float64
 						var matchC, matchL []*matchParts
 						var ok bool
-						freq, ok := freqs[val]
+						freq, ok := freqs[freqVal]
 						if !ok {
 							log.Fatal(fmt.Errorf("bad index into freqList"))
 						}
@@ -266,12 +272,11 @@ func main() {
 						//first, the true value of L & C matching elements are calculated
 						//this is for all cases below
 						l, c = s.calcLCValues(freq)
-						//If called for, the min/max values of true L&C calculated
+						//The min/max values of true L&C calculated
 						//and written to file (at the end)
 						//no other conditions will be met after this.
-						if s.stepMMLC() {
-							s.calcMinMax(l, c, freq, val)
-						}
+						s.calcMinMax(l, c, freq, freqVal)
+
 						//if called for, true LC values are approximated
 						//this also sets up the condition for all the cases below
 						if s.stepFitLC() {
@@ -294,20 +299,17 @@ func main() {
 							var line string
 							var parallelY complex128
 							s.copyExt(s.baseMaxSeries1)
-							s.calcImpedance(freq)
+							seriesZ, parallelY := s.calcImpedance(freq)
 							// lMatch, cMatch := s.sumLC()
-							seriesZ := complex(0, 2.0*math.Pi*freq*l) //Match)
-							if math.Abs(c) < epsilon {
+							// seriesZ, parallelY := s.calcTotalMatch()
+							// seriesZ := complex(0, 2.0*math.Pi*freq*l) //Match)
+							if cmplx.Abs(parallelY) < epsilon {
 								parallelY = bigImpedance
-							} else {
-								parallelY = complex(0, (2.0 * math.Pi * freq * c)) //Match))
 							}
-							//fmt.Println(c, parallelY)
 							switch s.region {
 							case 1:
 								line = ""
 								//calculate the admittance of the load
-								// fmt.Println(s.point0.r, s.point0.x)
 								yLoad := s.calcYLoad()
 								//add load admittance to parallel capacitor admittance
 								yParallel := yLoad + parallelY
@@ -315,9 +317,9 @@ func main() {
 								zParallel := calcZfromY(yParallel)
 								//add series impedance of the inductors to the total
 								zTotal := zParallel + seriesZ
-								// fmt.Println(yLoad, yParallel, zParallel, zTotal)
 								//voltage divider between the source impedance and the rest
-								vTotal := complex(s.vSource, 0.0) * (zTotal / (zTotal + complex(z0, 0)))
+								iSource := complex(s.vSource/z0, 0)
+								vTotal := ((zSource * zTotal) / (zSource + zTotal)) * iSource
 								//votage divider between the series inductance and the parallel capacitors and the load
 								vParallel := vTotal * (zParallel / (zParallel + seriesZ))
 								//calculate capacitor currents
@@ -341,6 +343,7 @@ func main() {
 								line += fmt.Sprintf("%f,", cmplx.Abs(iSeries))
 								line = s.addLVoltage(line)
 								//								fmt.Println(iLoad)
+								m.calcMaxEngaged(s, vParallel, iSeries, freqVal)
 							case 2:
 								line = ""
 								//calculate load impedance
@@ -354,7 +357,8 @@ func main() {
 								//convert admittance to impedance
 								zTotal := calcZfromY(yTotal)
 								//voltage divider between the source resitance and the whole
-								vTotal := complex(s.vSource, 0.0) * (zTotal / (zTotal + complex(z0, 0)))
+								iSource := complex(s.vSource/z0, 0)
+								vTotal := ((zSource * zTotal) / (zSource + zTotal)) * iSource
 								//calculate capacitor currents
 								s.capCurrent(vTotal)
 								//load and series inductors are in serries so current is the same
@@ -367,6 +371,7 @@ func main() {
 								line = s.addCCurrent(line)
 								line += fmt.Sprintf("%f,", cmplx.Abs(iSeries))
 								line = s.addLVoltage(line)
+								m.calcMaxEngaged(s, vTotal, iSeries, freqVal)
 							}
 							_, err = f.WriteString(line)
 							if err != nil {
@@ -377,27 +382,23 @@ func main() {
 						//calculated.
 						//no other conditions will be met after this.
 						if s.stepMMFitLC() {
-							s.calcMinMax(l, c, freq, val)
+							s.calcMinMax(l, c, freq, freqVal)
 						}
 						//if called for, the difference between the true and approximate
 						//LC values are calculated.
 						//This is also a set up for the case that follows.
-						if s.stepDelFitNotFit() {
-							c = math.Abs(c0 - c)
-							l = math.Abs(l0 - l)
-						}
-						if s.stepDelMMFitNotFit() {
-							s.calcMinMax(l, c, freq, val)
-						}
-						if s.stepLCFile() || s.stepFitLCFile() {
+						// if s.stepDelFitNotFit() {
+						// 	c = math.Abs(c0 - c)
+						// 	l = math.Abs(l0 - l)
+						// }
+						// if s.stepDelMMFitNotFit() {
+						// 	s.calcMinMax(l, c, freq, freqVal)
+						// }
+						if s.options == "LC" || s.options == "FitLC" { //s.stepLCFile() || s.stepFitLCFile() {
 							err := s.writeLCValues(l, c, f)
 							if err != nil {
 								log.Fatal(err)
 							}
-							// _, err = f.WriteString("\n")
-							// if err != nil {
-							// 	log.Fatal(err)
-							// }
 						}
 						if s.options != "noError" {
 							s.gamma = s.gammaTemp
@@ -413,10 +414,16 @@ func main() {
 				}
 			}
 			//condition for writing min/max values
-			if s.stepMMFile() {
+			if s.options == "LC" || s.options == "FitLC" { //s.stepLCFile() || s.stepFitLCFile() {
 				err = s.writeMMValues(f1)
 				if err != nil {
 					log.Fatal(err)
+				}
+			}
+			if s.stepVIFile() {
+				err = m.writeMaxVI(f1)
+				if err != nil {
+					log.Fatal("writing MaxVI", err)
 				}
 			}
 		case "fileName":
@@ -442,6 +449,15 @@ func main() {
 		case "vSource":
 			y, _ := strconv.Atoi(item.Value)
 			s.vSource = float64(y)
+		case "power":
+			y, _ := strconv.Atoi(item.Value)
+			s.power = float64(y)
+		case "capQ":
+			y, _ := strconv.Atoi(item.Value)
+			s.capQ = float64(y)
+		case "indQ":
+			y, _ := strconv.Atoi(item.Value)
+			s.indQ = float64(y)
 		default:
 			log.Fatal("Bad parameter passed", item.Name, item.Value)
 		}

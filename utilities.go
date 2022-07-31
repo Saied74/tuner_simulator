@@ -50,7 +50,10 @@ func makeSmith(home string) *smith {
 			&matchParts{},
 			&matchParts{},
 		},
-		vSource: 235.0,
+		vSource: 282.0,
+		power:   200,
+		capQ:    1000,
+		indQ:    100,
 	}
 }
 
@@ -88,8 +91,79 @@ func (s *smith) resetSmith(home string) *smith {
 		&matchParts{},
 	}
 	ss.vSource = s.vSource
+	ss.power = s.power
 	ss.which = s.which
+	ss.capQ = s.capQ
+	ss.indQ = s.indQ
 	return ss
+}
+
+func makeMaxVI() maxVI {
+	cplxZero := complex(0.0, 0.0)
+	var m = maxVI{}
+	for _, item := range freqList {
+		key := item + " C"
+		m[key] = []*matchParts{}
+		m[key] = append(m[key], &matchParts{vAcross: cplxZero})
+		for _, c := range baseCap {
+			matchC := &matchParts{value: c, vAcross: cplxZero, iThrough: cplxZero}
+			m[key] = append(m[key], matchC)
+		}
+		key = item + " L"
+		m[key] = append(m[key], &matchParts{iThrough: cplxZero})
+		for _, l := range baseInductor {
+			matchL := &matchParts{value: l, vAcross: cplxZero, iThrough: cplxZero}
+			m[key] = append(m[key], matchL)
+		}
+	}
+	return m
+}
+
+//calculates the maximum voltage across each inductor and the maximum
+//curretn through each capacitor regardless of the fact that the respective
+//relay was activated or not.  In a sense, it is the maximum of maximum
+func (m maxVI) calcMax(s *smith, vParallel, iSeries complex128, freqVal string) {
+	key := freqVal + " C"
+	if cmplx.Abs(vParallel) > cmplx.Abs(m[key][0].vAcross) {
+		m[key][0].vAcross = vParallel
+	}
+	for i, cMatch := range s.matchC {
+		if cmplx.Abs(cMatch.iThrough) > cmplx.Abs(m[key][i+1].iThrough) {
+			m[key][i+1].iThrough = cMatch.iThrough
+		}
+	}
+	key = freqVal + " L"
+	if cmplx.Abs(iSeries) > cmplx.Abs(m[key][0].iThrough) {
+		m[key][0].iThrough = iSeries
+	}
+	for i, lMatch := range s.matchL {
+		if cmplx.Abs(lMatch.vAcross) > cmplx.Abs(m[key][i+1].vAcross) {
+			m[key][i+1].vAcross = lMatch.vAcross
+		}
+	}
+}
+
+//calculates the maximum voltage across inductors and maximum current through
+//capacitors only if the respective relay was engaged.
+func (m maxVI) calcMaxEngaged(s *smith, vParallel, iSeries complex128, freqVal string) {
+	key := freqVal + " C"
+	if cmplx.Abs(vParallel) > cmplx.Abs(m[key][0].vAcross) {
+		m[key][0].vAcross = vParallel
+	}
+	for i, cMatch := range s.matchC {
+		if cmplx.Abs(cMatch.iThrough) > cmplx.Abs(m[key][i+1].iThrough) && cMatch.inPlay {
+			m[key][i+1].iThrough = cMatch.iThrough
+		}
+	}
+	key = freqVal + " L"
+	if cmplx.Abs(iSeries) > cmplx.Abs(m[key][0].iThrough) {
+		m[key][0].iThrough = iSeries
+	}
+	for i, lMatch := range s.matchL {
+		if cmplx.Abs(lMatch.vAcross) > cmplx.Abs(m[key][i+1].vAcross) && lMatch.inPlay {
+			m[key][i+1].vAcross = lMatch.vAcross
+		}
+	}
 }
 
 func (s *smith) trueCalc() {
@@ -435,17 +509,27 @@ func (s *smith) calcRegion2Z(z complex128) complex128 {
 	return (z1 * z2) / (z1 + z2)
 }
 
-func (s *smith) calcImpedance(f float64) {
+func (s *smith) calcImpedance(f float64) (complex128, complex128) {
+	var xSeries, yParallel complex128
 	for i := range s.matchC {
 		if s.matchC[i].inPlay {
-			s.matchC[i].impedance = complex(0.0, (-1.0)/(2*math.Pi*s.matchC[i].value*f))
+			x := (-1.0) / (2 * math.Pi * s.matchC[i].value * f)
+			r := x / s.capQ
+			s.matchC[i].resistance = r
+			s.matchC[i].impedance = complex(r, x)
+			yParallel += 1.0 / s.matchC[i].impedance
 		}
 	}
 	for i := range s.matchL {
 		if s.matchL[i].inPlay {
-			s.matchL[i].impedance = complex(0.0, 2*math.Pi*s.matchL[i].value*f)
+			x := 2 * math.Pi * s.matchL[i].value * f
+			r := x / s.indQ
+			s.matchL[i].resistance = r
+			s.matchL[i].impedance = complex(r, x)
+			xSeries += s.matchL[i].impedance
 		}
 	}
+	return xSeries, yParallel
 }
 
 func (s *smith) sumLC() (float64, float64) {
