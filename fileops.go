@@ -2,12 +2,78 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math/cmplx"
 	"os"
 	"strings"
 )
 
-//writes the header for the base case with no errors
+func (s *smith) openTwoFiles() (*os.File, *os.File) {
+	f1, err := os.OpenFile(s.outputFile, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+	f2, err := os.OpenFile(s.minMaxFile, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return f1, f2
+}
+
+func (s *smith) writeLCandFitHeaders(f1, f2 *os.File) {
+	err := writeImpedanceHeader(f1)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = writeLCHeader(f1)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = f1.WriteString("\n")
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (s *smith)writeVIHeaders(f1 *os.File) {
+    err := writeImpedanceHeader(f1)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    err = writeVIHeader(f1)
+    if err != nil {
+        log.Fatal(err)
+    }
+}
+
+func (s *smith) writeSimpleLCValues(l, c float64, f *os.File) {
+	_, err := f.WriteString(fmt.Sprintf("%e,%e,", c, l))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (s *smith) writeSimpleMMValues(f *os.File) {
+	var line = ",C,L\n"
+	_, err := f.WriteString(line)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, val := range freqList {
+		line = val + ","
+		mm := *s.minMax[val]
+		line += fmt.Sprintf("%e,%e,", mm.maxC, mm.maxL)
+		line += "\n"
+		_, err = f.WriteString(line)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+// writes the header for the base case with no errors
 func writeImpedanceHeader(f *os.File) error {
 	//csv first line for the base case with no errors
 	var impedance = []string{"swr", "theta", "r0", "x0", "r1", "x1", "region",
@@ -26,24 +92,31 @@ func writeImpedanceHeader(f *os.File) error {
 	return nil
 }
 
-//writes the base case (no errors) data
-func (s *smith) writeImpedance(f *os.File) error {
+// writes the base case (no errors) data
+func (s *smith) writeImpedance(f *os.File) {
+    var swr, r, x float64
 	line := fmt.Sprintf("%.1f,%0.0f,%0.2f,%0.2f,%0.2f,%0.2f,%d,%0.2f,%0.2f,",
 		s.s, s.theta, s.point0.r, s.point0.x, s.point1.r, s.point1.x, s.region, s.parallelReact, s.seriesReact)
 	_, err := f.WriteString(line)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
-	return nil
+    swr = 1
+	_, err = f.WriteString(fmt.Sprintf("%.3f,%.3f,%d,%.3f,%.3f,%.2f,",
+					        r, x, s.region, s.seriesReact, s.parallelReact, swr))
+	if err != nil {
+    	log.Fatal(err)
+	}
+
 }
 
-//writes VI file header for all the current through C and voltage across L values
+// writes VI file header for all the current through C and voltage across L values
 func writeVIHeader(f *os.File) error {
 	var h string
-	h += "swr,"
-	h += "theta,"
-	h += "series,"
-	h += "parallel,"
+//	h += "swr,"
+//	h += "theta,"
+//	h += "series,"
+//	h += "parallel,"
 	for i, item := range lcValues {
 
 		if i%2 == 0 {
@@ -82,8 +155,8 @@ func writeVIHeader(f *os.File) error {
 // 	return nil
 // }
 
-//header for when the actual value of L and C are calculated
-//past use, may not have any future use
+// header for when the actual value of L and C are calculated
+// past use, may not have any future use
 func writeLCHeader(f *os.File) error {
 	for _, item := range lcValues {
 		_, err := f.WriteString(item + ",")
@@ -180,8 +253,8 @@ func (s *smith) writeMMValues(f *os.File) error {
 // 	return nil
 // }
 
-//writes the actual Ls and Cs based on freequency of bands
-//past use, may not have any future use
+// writes the actual Ls and Cs based on freequency of bands
+// past use, may not have any future use
 func (s *smith) writeFreqs(f *os.File) {
 	var m float64
 	for i, freq := range s.freqs {
@@ -212,7 +285,7 @@ func (s *smith) writeLCValues(l, c float64, f *os.File) error {
 	return nil
 }
 
-func (m maxVI) writeMaxVI(f1 *os.File) error {
+func (m maxVI) writeMaxVI(f1 *os.File) {
 	line := " ,"
 	line += "Cap Voltage,"
 	for _, c := range baseCap {
@@ -223,7 +296,7 @@ func (m maxVI) writeMaxVI(f1 *os.File) error {
 	line += "\n"
 	_, err := f1.WriteString(line)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 	for _, freqVal := range freqList {
 		key := freqVal + " C"
@@ -239,7 +312,7 @@ func (m maxVI) writeMaxVI(f1 *os.File) error {
 		line += "\n"
 		_, err := f1.WriteString(line)
 		if err != nil {
-			return err
+			log.Fatal(err)
 		}
 
 	}
@@ -255,7 +328,7 @@ func (m maxVI) writeMaxVI(f1 *os.File) error {
 	line += "\n"
 	_, err = f1.WriteString(line)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 	for _, freqVal := range freqList {
 		key := freqVal + " L"
@@ -271,8 +344,7 @@ func (m maxVI) writeMaxVI(f1 *os.File) error {
 		line += "\n"
 		_, err := f1.WriteString(line)
 		if err != nil {
-			return err
+			log.Fatal(err)
 		}
 	}
-	return nil
 }

@@ -50,7 +50,7 @@ func makeSmith(home string) *smith {
 			&matchParts{},
 			&matchParts{},
 		},
-		vSource: 282.0,
+		vSource: 223.0,
 		power:   200,
 		capQ:    1000,
 		indQ:    100,
@@ -119,9 +119,9 @@ func makeMaxVI() maxVI {
 	return m
 }
 
-//calculates the maximum voltage across each inductor and the maximum
-//curretn through each capacitor regardless of the fact that the respective
-//relay was activated or not.  In a sense, it is the maximum of maximum
+// calculates the maximum voltage across each inductor and the maximum
+// curretn through each capacitor regardless of the fact that the respective
+// relay was activated or not.  In a sense, it is the maximum of maximum
 func (m maxVI) calcMax(s *smith, vParallel, iSeries complex128, freqVal string) {
 	key := freqVal + " C"
 	if cmplx.Abs(vParallel) > cmplx.Abs(m[key][0].vAcross) {
@@ -143,8 +143,8 @@ func (m maxVI) calcMax(s *smith, vParallel, iSeries complex128, freqVal string) 
 	}
 }
 
-//calculates the maximum voltage across inductors and maximum current through
-//capacitors only if the respective relay was engaged.
+// calculates the maximum voltage across inductors and maximum current through
+// capacitors only if the respective relay was engaged.
 func (m maxVI) calcMaxEngaged(s *smith, vParallel, iSeries complex128, freqVal string) {
 	key := freqVal + " C"
 	if cmplx.Abs(vParallel) > cmplx.Abs(m[key][0].vAcross) {
@@ -247,8 +247,8 @@ func (s *smith) rotateLeft() {
 	s.parallelReact = -1.0 / s.parallelSuscep
 }
 
-//noParallel is the case when the original point (point 0) is on the r=1 circle
-//and only a series inductance is needed to mach the impedance
+// noParallel is the case when the original point (point 0) is on the r=1 circle
+// and only a series inductance is needed to mach the impedance
 func (s *smith) noParallel() {
 	s.point1.gammaReal = (1.0 - s.point0.g) / (1.0 + 3*s.point0.g)
 	s.point1.gammaImag = -math.Sqrt(s.point1.gammaReal - s.point1.gammaReal*s.point1.gammaReal)
@@ -259,8 +259,8 @@ func (s *smith) noParallel() {
 	s.seriesSuscep = -1.0 / s.seriesReact
 }
 
-//noSeries is the case when the original point (point 0) is on the g=1 circle
-//and only a parallel parallel capacitance is needed to match the impedance
+// noSeries is the case when the original point (point 0) is on the g=1 circle
+// and only a parallel parallel capacitance is needed to match the impedance
 func (s *smith) noSeries() {
 	s.point1.gammaReal = (s.point0.r - 1.0) / (3*s.point0.r + 1)
 	s.point1.gammaImag = math.Sqrt(-s.point1.gammaReal - s.point1.gammaReal*s.point1.gammaReal)
@@ -373,9 +373,10 @@ func normalizeLC(lc float64) (float64, string) {
 	return lc * 1.0e12, "p"
 }
 
-//approximate LC values using baseCap and baseInductor values
+// approximate LC values using baseCap and baseInductor values
 func fitLC(lc float64, base []float64) (float64, []*matchParts, bool) {
 	match := []*matchParts{ //ordered from the highest value to the lowest value
+		&matchParts{},
 		&matchParts{},
 		&matchParts{},
 		&matchParts{},
@@ -405,6 +406,8 @@ func fitLC(lc float64, base []float64) (float64, []*matchParts, bool) {
 	}
 	if math.Abs(lc-smallest) < smallest/2 {
 		y += smallest
+        match[len(match)-1].inPlay = true
+        match[len(match)-1].value = smallest
 	}
 	return y, match, true
 }
@@ -425,16 +428,20 @@ func (s *smith) calcFittedLC() (float64, float64) {
 }
 
 func (s *smith) addCCurrent(line string) string {
-	for _, c := range s.matchC {
-		line += fmt.Sprintf("%.2f,", cmplx.Abs(c.iThrough))
-	}
+    if s.region != 3 {
+	    for _, c := range s.matchC {
+		    line += fmt.Sprintf("%.2f,", cmplx.Abs(c.iThrough))
+	    }
+    }
 	return line
 }
 
 func (s *smith) addLVoltage(line string) string {
-	for _, l := range s.matchL {
-		line += fmt.Sprintf("%.2f,", cmplx.Abs(l.vAcross))
-	}
+    if s.region != 4 {
+	    for _, l := range s.matchL {
+		    line += fmt.Sprintf("%.2f,", cmplx.Abs(l.vAcross))
+	    }
+    }
 	return line
 }
 
@@ -469,9 +476,6 @@ func (s *smith) calcMinMax(l, c, freq float64, val string) {
 func (s *smith) calcYLoad() complex128 {
 	r := s.point0.r * z0
 	x := s.point0.x * z0
-	// r := s.baseMaxSeries1.basePoint.r * z0
-	// x := s.baseMaxSeries1.basePoint.x * z0
-	//fmt.Println(r, x)
 	g, b := getAdm(r, x)
 	return complex(g, b)
 }
@@ -496,7 +500,7 @@ func calcYfromZ(z complex128) complex128 {
 	return complex(g, b)
 }
 
-//for region 1 capacitor parallel with the load
+// for region 1 capacitor parallel with the load
 func (s *smith) calcRegion1Z(z complex128) complex128 {
 	z1 := complex(0, s.parallelReact*z0)
 	z2 := (z1 * z) / (z1 + z)
@@ -517,7 +521,7 @@ func (s *smith) calcImpedance(f float64) (complex128, complex128) {
 			r := x / s.capQ
 			s.matchC[i].resistance = r
 			s.matchC[i].impedance = complex(r, x)
-			yParallel += 1.0 / s.matchC[i].impedance
+            yParallel += 1.0 / s.matchC[i].impedance
 		}
 	}
 	for i := range s.matchL {
@@ -547,7 +551,7 @@ func (s *smith) sumLC() (float64, float64) {
 	return l, c
 }
 
-//also returns the load current
+// also returns the load current
 func (s *smith) capCurrent(vParallel complex128) {
 	for i := range s.matchC {
 		if s.matchC[i].inPlay {

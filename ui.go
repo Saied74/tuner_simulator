@@ -9,7 +9,8 @@ import (
 
 var uiItems = cli.Items{
 	OrderList: []string{"fileName", "minMaxFile", "options", "gainTol", "phaseTol",
-		"vSource", "power", "capQ", "indQ", "normalize", "threshold", "which", "bruteForce"},
+		"vSource", "power", "capQ", "indQ", "normalize", "threshold", "which", "bruteForce",
+		"simpleLC", "errorLC", "fitLC", "calcVI"},
 	ItemList: map[string]*cli.Item{
 		"bruteForce": &cli.Item{
 			Name:      "bruteForce",
@@ -72,7 +73,7 @@ var uiItems = cli.Items{
 			Name:      "vSource",
 			Prompt:    "Source voltage in volts",
 			Response:  "useless",
-			Value:     "282",
+			Value:     "223",
 			Validator: voltageValidator,
 		},
 		"power": &cli.Item{
@@ -114,6 +115,34 @@ var uiItems = cli.Items{
 			Response:  "Do I need this 4?",
 			Value:     "LC",
 			Validator: optionValidator,
+		},
+		"simpleLC": &cli.Item{
+			Name:      "simpleLC",
+			Prompt:    "execute simple LC and LC min max calculation",
+			Response:  "Do I need this 4?",
+			Value:     "",
+			Validator: simpleValidator,
+		},
+		"errorLC": &cli.Item{
+			Name:      "errorLC",
+			Prompt:    "introduce errors, calc LC and min max error values",
+			Response:  "Do I need this 4?",
+			Value:     "",
+			Validator: errorValidator,
+		},
+		"fitLC": &cli.Item{
+			Name:      "fitLC",
+			Prompt:    "fit LC to standard values and calculate max difference to actual values",
+			Response:  "Do I need this 4?",
+			Value:     "",
+			Validator: fitValidator,
+		},
+		"calcVI": &cli.Item{
+			Name:      "calcVI",
+			Prompt:    "calculate current and voltage across/through L, C, and relays and maximum values",
+			Response:  "Do I need this 4?",
+			Value:     "",
+			Validator: calcValidator,
 		},
 	},
 	ActionLines: []string{"Enter the number of item you would like to runn or q to quit",
@@ -224,6 +253,62 @@ var optionValidator = cli.ItemValidator(func(x string) bool {
 	case "FitLC":
 		return true
 	case "VI":
+		return true
+	}
+	return false
+})
+
+var simpleValidator = cli.ItemValidator(func(x string) bool {
+	switch x {
+	case "simple":
+		return true
+	case "Simple":
+		return true
+	case "s":
+		return true
+	case "sim":
+		return true
+	case "Sim":
+		return true
+	}
+	return false
+})
+
+var errorValidator = cli.ItemValidator(func(x string) bool {
+	switch x {
+	case "error":
+		return true
+	case "Error":
+		return true
+	case "e":
+		return true
+	case "err":
+		return true
+	case "Err":
+		return true
+	}
+	return false
+})
+
+var fitValidator = cli.ItemValidator(func(x string) bool {
+	switch x {
+	case "fit":
+		return true
+	case "Fit":
+		return true
+	case "f":
+		return true
+	}
+	return false
+})
+
+var calcValidator = cli.ItemValidator(func(x string) bool {
+	switch x {
+	case "calc":
+		return true
+	case "cal":
+		return true
+	case "c":
 		return true
 	}
 	return false

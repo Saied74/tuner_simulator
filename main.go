@@ -1,5 +1,33 @@
 package main
 
+//This simulator in its first iteration has gotten very complicated.  So, after some experience
+//with running the simulator and building the prototype measurement system (phase and magnitude
+//of the reflection coefficient and power), I will attempt to simplify it as follows.
+//The use cases for the simulator will be as follows:
+//
+//all simulations will be for SWR of 1.2, 2, 3, ....10 and phase angles of 1 to 360 in 1 degree
+//increments. They will also be for the two ends of each amateur radio band.  All simulation
+//outputs will be written to files, one for the full data set, one for the min and max values.
+//
+//simpleLC: calculates the values of L and C as well as minimum and maximum values of the L and C
+//Files written:
+//	full set of L and C values
+//	minimum and maximum values file
+//errorLC: calculates the values of L and C with errors and the minimum and maximum error values
+//Files written:
+//	full set of errored L and C values
+//	minimum and maximum error values relative to the no error calculations
+//fitLC: calculates the fitted value of L and C to standard values and difference to the exact values
+//Files written:
+//	full set of fitted values
+//	minimum and maximum difference to the exact values
+//calcVI: current through all capacitors and inductors as well as closed relays.  Voltage across all
+//	  inductors and capacitors including across all open relays
+//Files written:
+//	full set of current through and voltage across all L and C components
+//	minimum and maximum values of the currents and voltages
+//	maximum valtage across open relays and maximum current through closed relays
+
 import (
 	"fmt"
 	"log"
@@ -141,12 +169,12 @@ var freqs = map[string]float64{
 // var tolerance = []float64{0.01, -0.01, 0.02, -0.02, 0.05, -0.05, 0.10, -0.10,
 // 	0.15, -0.15, 0.20, -0.20, 0.25, -0.25}
 
-//Important Note:  Capacitance values are listed from the largest to the smallest
-var baseCap = []float64{3000.0e-12, 1500.0e-12, 750.0e-12, 360.0e-12, 180.0e-12,
-	91.0e-12, 43.0e-12, 22.0e-12, 11.0e-12}
+// Important Note:  Capacitance values are listed from the largest to the smallest
+var baseCap = []float64{6000.0e-12, 3000.0e-12, 1410.0e-12, 682.0e-12, 340.0e-12, 173.0e-12,
+	86.0e-12, 43.0e-12, 22.0e-12, 12.0e-12}
 
-//Important note:  Inductance values are listed from the largest to the smallest
-var baseInductor = []float64{6400.0e-9, 3200.0e-9, 1600.0e-9, 800.0e-9, 400.0e-9,
+// Important note:  Inductance values are listed from the largest to the smallest
+var baseInductor = []float64{12800.0e-9, 6400.0e-9, 3200.0e-9, 1600.0e-9, 800.0e-9, 400.0e-9,
 	200.0e-9, 100.0e-9, 50.0e-9, 25.0e-9}
 
 func main() {
@@ -159,6 +187,179 @@ func main() {
 		switch item.Name {
 		case "Quit":
 			os.Exit(1)
+		case "simpleLC":
+			//open the full data set and min/max files
+			f1, f2 := s.openTwoFiles()
+			defer f1.Close()
+			defer f2.Close()
+			s.writeLCandFitHeaders(f1, f2)
+			for _, w := range swrList {
+				for i := 0; i < 360; i++ {
+					s := s.resetSmith(home)
+					s.s = w
+					s.gamma = (s.s - 1.0) / (s.s + 1.0)
+					s.theta = float64(i)
+					s.trueCalc()
+					s.writeImpedance(f1)
+					for _, freqVal := range freqList {
+						var l, c float64
+						freq, ok := freqs[freqVal]
+						if !ok {
+							log.Fatal(fmt.Errorf("bad index into freqList"))
+						}
+						l, c = s.calcLCValues(freq) //write once per swr/theta line
+						s.writeSimpleLCValues(l, c, f1)
+						s.calcMinMax(l, c, freq, freqVal) //write once at the end
+					}
+					_, err := f1.WriteString("\n")
+					if err != nil {
+						log.Fatal(err)
+					}
+				}
+			}
+			s.writeSimpleMMValues(f2)
+
+		case "fitLC":
+			f1, f2 := s.openTwoFiles()
+			defer f1.Close()
+			defer f2.Close()
+			s.writeLCandFitHeaders(f1, f2)
+			for _, w := range swrList {
+				for i := 0; i < 360; i++ {
+					s := s.resetSmith(home)
+					s.s = w
+					s.gamma = (s.s - 1.0) / (s.s + 1.0)
+					s.theta = float64(i)
+					s.trueCalc()
+					s.writeImpedance(f1)
+					for _, freqVal := range freqList {
+						var l, c float64
+						var matchC, matchL []*matchParts
+						freq, ok := freqs[freqVal]
+						if !ok {
+							log.Fatal(fmt.Errorf("bad index into freqList"))
+						}
+						l, c = s.calcLCValues(freq) //write once per swr/theta line
+
+						c, matchC, ok = fitLC(c, baseCap) //not ok indicates could not fit
+						if !ok {
+							log.Fatal("Capacitor was too big")
+						}
+						l, matchL, ok = fitLC(l, baseInductor)
+						if !ok {
+							log.Fatal("Inductor was too big")
+						}
+						s.matchC = matchC
+						s.matchL = matchL
+						s.writeSimpleLCValues(l, c, f1)
+						s.calcMinMax(l, c, freq, freqVal) //write once at the end
+					}
+					_, err := f1.WriteString("\n")
+					if err != nil {
+						log.Fatal(err)
+					}
+				}
+			}
+			s.writeSimpleMMValues(f2)
+
+		case "calcVI":
+            //n := 0
+			f1, f2 := s.openTwoFiles()
+			defer f1.Close()
+			defer f2.Close()
+			s.writeVIHeaders(f1)                                  //note writeVIHeaders is different than writeVIHeader
+                                                                //minmax VI header is written at the same time as data.
+			m := makeMaxVI()
+			for _, w := range swrList {
+				for i := 0; i < 360; i++ {
+					s := s.resetSmith(home)
+					s.s = w
+					s.gamma = (s.s - 1.0) / (s.s + 1.0)
+					s.theta = float64(i)
+					s.trueCalc()
+					s.writeImpedance(f1)
+					for _, freqVal := range freqList {
+						var l, c float64
+						var matchC, matchL []*matchParts
+						freq, ok := freqs[freqVal]
+						if !ok {
+							log.Fatal(fmt.Errorf("bad index into freqList"))
+						}
+						l, c = s.calcLCValues(freq) //write once per swr/theta line
+
+						c, matchC, ok = fitLC(c, baseCap) //not ok indicates could not fit
+						if !ok {
+							log.Fatal("Capacitor was too big")
+						}
+						l, matchL, ok = fitLC(l, baseInductor)
+						if !ok {
+							log.Fatal("Inductor was too big")
+						}
+						s.matchC = matchC
+						s.matchL = matchL
+
+						var line string
+						var parallelY complex128
+						s.copyExt(s.baseMaxSeries1)
+						seriesZ, parallelY := s.calcImpedance(freq) //matching circuit components
+
+						switch s.region {
+						case 1:
+							line = ""
+                            yLoad := 1.0 / complex(s.point0.r * z0, s.point0.x * z0)
+							yParallel := yLoad + parallelY          //add load and parallalel capacitor admittances
+							zParallel := 1.0 / yParallel            // calcZfromY(yParallel)
+                            zTotal := zParallel + seriesZ
+                            iSeries := complex(s.vSource, 0) / zTotal
+                            vParallel := iSeries * zParallel
+							s.capCurrent(vParallel)                 //calculate capacitor currents
+							s.indVoltage(iSeries)                   //calculate the voltage across each inductor
+							line += fmt.Sprintf("%.2f,", cmplx.Abs(vParallel))
+							line = s.addCCurrent(line)
+							line += fmt.Sprintf("%f,", cmplx.Abs(iSeries))
+							line = s.addLVoltage(line)
+							m.calcMaxEngaged(s, vParallel, iSeries, freqVal)
+						case 2:
+							line = ""
+							zLoad := s.calcZLoad()                  //calculate load impedance
+							zSeries := zLoad + seriesZ
+							ySeries := calcYfromZ(zSeries)
+							s.capCurrent(complex(s.vSource, 0))
+							iSeries := complex(s.vSource, 0) * ySeries
+							s.indVoltage(iSeries)
+							line += fmt.Sprintf("%.2f,", s.vSource)
+							line = s.addCCurrent(line)
+							line += fmt.Sprintf("%f,", cmplx.Abs(iSeries))
+							line = s.addLVoltage(line)
+							m.calcMaxEngaged(s, complex(s.vSource, 0), iSeries, freqVal)
+                        case 3:
+                            line = ""
+                            zLoad := s.calcZLoad()
+                            zSeries := zLoad + seriesZ
+                            iSeries := complex(s.vSource, 0) / zSeries
+                            s.indVoltage(iSeries)
+                            line += fmt.Sprintf("%.2f,", s.vSource)
+                            line = s.addCCurrent(line)
+                            line += fmt.Sprintf("%f,", cmplx.Abs(iSeries))
+                            line = s.addLVoltage(line)
+                            m.calcMaxEngaged(s, complex(s.vSource, 0), iSeries, freqVal) 
+						}
+						_, err := f1.WriteString(line)
+						if err != nil {
+							log.Fatal(err)
+						}
+
+						s.calcMinMax(l, c, freq, freqVal) //write once at the end
+					}
+					_, err := f1.WriteString("\n")
+					if err != nil {
+						log.Fatal(err)
+					}
+				}
+			}
+            m.writeMaxVI(f2)
+			
+
 
 		case "bruteForce":
 			// fmt.Println("Entered bruteForce block")
@@ -221,7 +422,7 @@ func main() {
 					s.theta = float64(i)
 					s.trueCalc()
 					if s.stepLCFile() || s.stepFitLCFile() {
-						err = s.writeImpedance(f)
+						s.writeImpedance(f1)
 						if err != nil {
 							log.Fatal(err)
 						}
@@ -421,10 +622,7 @@ func main() {
 				}
 			}
 			if s.stepVIFile() {
-				err = m.writeMaxVI(f1)
-				if err != nil {
-					log.Fatal("writing MaxVI", err)
-				}
+				m.writeMaxVI(f1)
 			}
 		case "fileName":
 			s.outputFile = home + item.Value
