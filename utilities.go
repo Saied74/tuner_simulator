@@ -213,20 +213,6 @@ func (s *smith) locate() {
 	return
 }
 
-func (s *smith) reLocate() {
-	zSq := s.point0.r*s.point0.r + s.point0.x*s.point0.x
-	if s.point0.r > 1.0 {
-		s.region = 1
-		return
-	}
-	if s.point0.x > 0.0 && s.point0.r < zSq {
-		s.region = 1
-		return
-	}
-	s.region = 2
-	return
-}
-
 func (s *smith) rotateRight() {
 	s.point1.gammaReal = (1.0 - s.point0.g) / (1.0 + 3*s.point0.g)
 	s.point1.gammaImag = -math.Sqrt(s.point1.gammaReal - s.point1.gammaReal*s.point1.gammaReal)
@@ -281,36 +267,6 @@ func (s *smith) calcEndPoint() {
 	s.point1.b = -s.point1.x / zSq
 }
 
-func (s *smith) bruteIt() (float64, float64) {
-	var r, x float64
-	var inc = 0.01
-	switch s.region {
-	case 1:
-		b := s.baseMaxSeries1.basePoint.b + s.parallelSuscep
-		g := s.baseMaxSeries1.basePoint.g
-		r, x = getImp(g, b)
-		for i := 0; inc < 10; i++ {
-			x += inc * s.seriesReact
-			if calcSWR(r, x) < s.threshold {
-				s.seriesReact = s.seriesReact * inc * float64(i)
-				return r, x
-			}
-		}
-	case 2:
-		x = s.baseMaxSeries1.basePoint.x + s.seriesReact
-		r = s.baseMaxSeries1.basePoint.r
-		g, b := getAdm(r, x)
-		for i := 0; i < 10; i++ {
-			b += inc * s.parallelSuscep
-			r, x = getImp(g, b)
-			if calcSWR(r, x) < s.threshold {
-				s.parallelReact = s.parallelReact * inc * float64(i)
-				return r, x
-			}
-		}
-	}
-	return r, x //the program never reaches this point except when it fails
-}
 
 func getImp(g, b float64) (float64, float64) {
 	ySq := b*b + g*g
@@ -320,15 +276,6 @@ func getImp(g, b float64) (float64, float64) {
 func getAdm(r, x float64) (float64, float64) {
 	zSq := r*r + x*x
 	return r / zSq, -x / zSq
-}
-
-func calcSWR(r, x float64) float64 {
-	denom := (r+1)*(r+1) + x*x
-	firstTerm := r*r + x*x - 1.0
-	num := math.Sqrt(firstTerm*firstTerm + 4.0*x*x)
-	absGamma := num / denom
-	swr := (1 + absGamma) / (1 - absGamma)
-	return swr
 }
 
 func (s *smith) copyExt(e *extreme) {
@@ -412,21 +359,6 @@ func fitLC(lc float64, base []float64) (float64, []*matchParts, bool) {
 	return y, match, true
 }
 
-func (s *smith) calcFittedLC() (float64, float64) {
-	var l, c float64
-	for _, lItem := range s.matchL {
-		if lItem.inPlay {
-			l += lItem.value
-		}
-	}
-	for _, cItem := range s.matchC {
-		if cItem.inPlay {
-			l += cItem.value
-		}
-	}
-	return l, c
-}
-
 func (s *smith) addCCurrent(line string) string {
     if s.region != 3 {
 	    for _, c := range s.matchC {
@@ -473,9 +405,9 @@ func (s *smith) calcMinMax(l, c, freq float64, val string) {
 	}
 }
 
-func (s *smith) calcYLoad() complex128 {
-	r := s.point0.r * z0
-	x := s.point0.x * z0
+func calcYfromZ(z complex128) complex128 {
+	r := real(z)
+	x := imag(z)
 	g, b := getAdm(r, x)
 	return complex(g, b)
 }
@@ -484,33 +416,6 @@ func (s *smith) calcZLoad() complex128 {
 	r := s.baseMaxSeries1.basePoint.r * z0
 	x := s.baseMaxSeries1.basePoint.x * z0
 	return complex(r, x)
-}
-
-func calcZfromY(y complex128) complex128 {
-	g := real(y)
-	b := imag(y)
-	r, x := getImp(g, b)
-	return complex(r, x)
-}
-
-func calcYfromZ(z complex128) complex128 {
-	r := real(z)
-	x := imag(z)
-	g, b := getAdm(r, x)
-	return complex(g, b)
-}
-
-// for region 1 capacitor parallel with the load
-func (s *smith) calcRegion1Z(z complex128) complex128 {
-	z1 := complex(0, s.parallelReact*z0)
-	z2 := (z1 * z) / (z1 + z)
-	return z2 + complex(0, s.seriesReact*z0)
-}
-
-func (s *smith) calcRegion2Z(z complex128) complex128 {
-	z1 := z + complex(0, s.seriesReact)
-	z2 := complex(0, s.parallelReact*z0)
-	return (z1 * z2) / (z1 + z2)
 }
 
 func (s *smith) calcImpedance(f float64) (complex128, complex128) {
@@ -536,20 +441,6 @@ func (s *smith) calcImpedance(f float64) (complex128, complex128) {
 	return xSeries, yParallel
 }
 
-func (s *smith) sumLC() (float64, float64) {
-	var l, c float64
-	for _, match := range s.matchL {
-		if match.inPlay {
-			l += match.value
-		}
-	}
-	for _, match := range s.matchC {
-		if match.inPlay {
-			c += match.value
-		}
-	}
-	return l, c
-}
 
 // also returns the load current
 func (s *smith) capCurrent(vParallel complex128) {

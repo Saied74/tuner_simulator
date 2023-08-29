@@ -47,6 +47,7 @@ func (s *smith)writeVIHeaders(f1 *os.File) {
     }
 }
 
+
 func (s *smith) writeSimpleLCValues(l, c float64, f *os.File) {
 	_, err := f.WriteString(fmt.Sprintf("%e,%e,", c, l))
 	if err != nil {
@@ -113,10 +114,6 @@ func (s *smith) writeImpedance(f *os.File) {
 // writes VI file header for all the current through C and voltage across L values
 func writeVIHeader(f *os.File) error {
 	var h string
-//	h += "swr,"
-//	h += "theta,"
-//	h += "series,"
-//	h += "parallel,"
 	for i, item := range lcValues {
 
 		if i%2 == 0 {
@@ -140,20 +137,6 @@ func writeVIHeader(f *os.File) error {
 	return err
 }
 
-//writes the header for the tolerance study.  It generates the text from
-//the tolerance values.  G stands for Gamma, T stands for Theta
-// func writeToleranceHeader(f *os.File) error {
-//
-// 	for _, t := range tolerance {
-// 		tt := int(t * 100)
-// 		item := fmt.Sprintf("Region G %d,Region T %d,", tt, tt)
-// 		_, err := f.WriteString(item)
-// 		if err != nil {
-// 			return err
-// 		}
-// 	}
-// 	return nil
-// }
 
 // header for when the actual value of L and C are calculated
 // past use, may not have any future use
@@ -209,49 +192,8 @@ func (s *smith) writeMMValues(f *os.File) error {
 			return err
 		}
 	}
-	// _, err = f.WriteString("\n")
-	// if err != nil {
-	// 	return err
-	// }
-	// _, err = f.WriteString("Min,")
-	// if err != nil {
-	// 	return err
-	// }
-	// line = ""
-	// for _, val := range freqList {
-	// 	mm := *s.minMax[val]
-	// 	if strings.HasPrefix(s.normalize, "norm") {
-	// 		c, cFix := normalizeLC(mm.minC)
-	// 		cFix += "F"
-	// 		l, lFix := normalizeLC(mm.minL)
-	// 		lFix += "H"
-	// 		line += fmt.Sprintf("%.2f %s,%.2f %s,", c, cFix, l, lFix)
-	// 	}
-	// 	if !strings.HasPrefix(s.normalize, "norm") {
-	// 		line += fmt.Sprintf("%e,%e,", mm.minC, mm.minL)
-	// 	}
-	// }
-	// _, err = f.WriteString(line)
-	// if err != nil {
-	// 	return err
-	// }
-	// _, err = f.WriteString("\n")
-	// if err != nil {
-	// 	return err
-	// }
 	return nil
 }
-
-// //write the results of the tolerance study (region number)
-// func (s *smith) writeTolerance(f *os.File) error {
-// 	for _, item := range s.tolerance {
-// 		_, err := f.WriteString(fmt.Sprintf("%d,", item.region))
-// 		if err != nil {
-// 			return err
-// 		}
-// 	}
-// 	return nil
-// }
 
 // writes the actual Ls and Cs based on freequency of bands
 // past use, may not have any future use
