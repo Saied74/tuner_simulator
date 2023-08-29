@@ -1,33 +1,16 @@
 package main
 
-//This simulator in its first iteration has gotten very complicated.  So, after some experience
-//with running the simulator and building the prototype measurement system (phase and magnitude
-//of the reflection coefficient and power), I will attempt to simplify it as follows.
-//The use cases for the simulator will be as follows:
-//
-//all simulations will be for SWR of 1.2, 2, 3, ....10 and phase angles of 1 to 360 in 1 degree
-//increments. They will also be for the two ends of each amateur radio band.  All simulation
-//outputs will be written to files, one for the full data set, one for the min and max values.
-//
-//simpleLC: calculates the values of L and C as well as minimum and maximum values of the L and C
-//Files written:
-//	full set of L and C values
-//	minimum and maximum values file
-//errorLC: calculates the values of L and C with errors and the minimum and maximum error values
-//Files written:
-//	full set of errored L and C values
-//	minimum and maximum error values relative to the no error calculations
-//fitLC: calculates the fitted value of L and C to standard values and difference to the exact values
-//Files written:
-//	full set of fitted values
-//	minimum and maximum difference to the exact values
-//calcVI: current through all capacitors and inductors as well as closed relays.  Voltage across all
-//	  inductors and capacitors including across all open relays
-//Files written:
-//	full set of current through and voltage across all L and C components
-//	minimum and maximum values of the currents and voltages
-//	maximum valtage across open relays and maximum current through closed relays
-
+//The usage of this simulator is described in my blog :
+//https://ad2cc.blogspot.com/2022/07/500-watt-antenna-tuner-part-3-simulator.html
+//I have also copied the contents of the blog page in the README.md file
+//The strucuture of the program is very simple.  In the file ui.go, I generate
+//the user command line interface using my cli package:
+//https://github.com/Saied74/cli/blob/master/cli.go
+//Function main invkes the cli package and recieves the user commands through a
+//channel.  Then through a switch statement, it selects what command to run.
+//The house keeping commands like quit and file name changes are self explantery.
+//The three calculations (simpleLC, fitLC, and calcVI use the analytical model
+//that is also available in the blog.
 import (
 	"fmt"
 	"log"
