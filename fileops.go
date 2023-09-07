@@ -35,18 +35,17 @@ func (s *smith) writeLCandFitHeaders(f1, f2 *os.File) {
 	}
 }
 
-func (s *smith)writeVIHeaders(f1 *os.File) {
-    err := writeImpedanceHeader(f1)
-    if err != nil {
-        log.Fatal(err)
-    }
+func (s *smith) writeVIHeaders(f1 *os.File) {
+	err := writeImpedanceHeader(f1)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    err = writeVIHeader(f1)
-    if err != nil {
-        log.Fatal(err)
-    }
+	err = writeVIHeader(f1)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
-
 
 func (s *smith) writeSimpleLCValues(l, c float64, f *os.File) {
 	_, err := f.WriteString(fmt.Sprintf("%e,%e,", c, l))
@@ -95,18 +94,18 @@ func writeImpedanceHeader(f *os.File) error {
 
 // writes the base case (no errors) data
 func (s *smith) writeImpedance(f *os.File) {
-    var swr, r, x float64
+	var swr, r, x float64
 	line := fmt.Sprintf("%.1f,%0.0f,%0.2f,%0.2f,%0.2f,%0.2f,%d,%0.2f,%0.2f,",
 		s.s, s.theta, s.point0.r, s.point0.x, s.point1.r, s.point1.x, s.region, s.parallelReact, s.seriesReact)
 	_, err := f.WriteString(line)
 	if err != nil {
 		log.Fatal(err)
 	}
-    swr = 1
+	swr = 1
 	_, err = f.WriteString(fmt.Sprintf("%.3f,%.3f,%d,%.3f,%.3f,%.2f,",
-					        r, x, s.region, s.seriesReact, s.parallelReact, swr))
+		r, x, s.region, s.seriesReact, s.parallelReact, swr))
 	if err != nil {
-    	log.Fatal(err)
+		log.Fatal(err)
 	}
 
 }
@@ -136,7 +135,6 @@ func writeVIHeader(f *os.File) error {
 	_, err := f.WriteString(h)
 	return err
 }
-
 
 // header for when the actual value of L and C are calculated
 // past use, may not have any future use

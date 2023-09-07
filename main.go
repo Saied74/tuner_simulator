@@ -17,7 +17,7 @@ import (
 	"math/cmplx"
 	"os"
 	"strconv"
-
+	//	"strings"
 
 	"github.com/Saied74/cli"
 )
@@ -150,8 +150,14 @@ var freqs = map[string]float64{
 }
 
 // Important Note:  Capacitance values are listed from the largest to the smallest
-var baseCap = []float64{6000.0e-12, 3000.0e-12, 1410.0e-12, 682.0e-12, 340.0e-12, 173.0e-12,
+
+var baseCap = []float64{6000.0e-12, 3000.0e-12, 1410.0e-12, 690.0e-12, 330.0e-12, 180.0e-12,
 	86.0e-12, 43.0e-12, 22.0e-12, 12.0e-12}
+
+/*
+var baseCap = []float64{6000.0e-12, 3000.0e-12, 1500.0e-12, 750.0e-12, 375.0e-12, 187.0e-12,
+	94.0e-12, 47.0e-12, 22.0e-12, 12.0e-12}
+*/
 
 // Important note:  Inductance values are listed from the largest to the smallest
 var baseInductor = []float64{12800.0e-9, 6400.0e-9, 3200.0e-9, 1600.0e-9, 800.0e-9, 400.0e-9,
@@ -242,12 +248,12 @@ func main() {
 			}
 			s.writeSimpleMMValues(f2)
 
-		case "calcVI": 
+		case "calcVI":
 			f1, f2 := s.openTwoFiles()
 			defer f1.Close()
 			defer f2.Close()
-			s.writeVIHeaders(f1)                                  //note writeVIHeaders is different than writeVIHeader
-                                                                //minmax VI header is written at the same time as data.
+			s.writeVIHeaders(f1) //note writeVIHeaders is different than writeVIHeader
+			//minmax VI header is written at the same time as data.
 			m := makeMaxVI()
 			for _, w := range swrList {
 				for i := 0; i < 360; i++ {
@@ -278,21 +284,25 @@ func main() {
 						s.matchL = matchL
 
 						var line string
-						var parallelY complex128
+						var parallelY, seriesZ complex128
+						zSource := complex(z0, 0)
+						vSource := complex(s.vSource, 0)
 						s.copyExt(s.baseMaxSeries1)
-						seriesZ, parallelY := s.calcImpedance(freq) //matching circuit components
+						seriesZ, parallelY = s.calcImpedance(freq) //matching circuit components
 
 						switch s.region {
 						case 1:
 							line = ""
-                            yLoad := 1.0 / complex(s.point0.r * z0, s.point0.x * z0)
-							yParallel := yLoad + parallelY          //add load and parallalel capacitor admittances
-							zParallel := 1.0 / yParallel            // calcZfromY(yParallel)
-                            zTotal := zParallel + seriesZ
-                            iSeries := complex(s.vSource, 0) / zTotal
-                            vParallel := iSeries * zParallel
-							s.capCurrent(vParallel)                 //calculate capacitor currents
-							s.indVoltage(iSeries)                   //calculate the voltage across each inductor
+							zLoad := s.calcZLoad()
+							yLoad := 1.0 / zLoad      // complex(s.point0.r * z0, s.point0.x * z0)
+							yTwo := yLoad + parallelY //add load and parallalel capacitor admittances
+							zTwo := 1.0 / yTwo
+							zThree := zTwo + seriesZ
+							zFour := zThree + zSource
+							iSeries := vSource / zFour
+							vParallel := iSeries * zTwo
+							s.capCurrent(vParallel) //calculate capacitor currents
+							s.indVoltage(iSeries)   //calculate the voltage across each inductor
 							line += fmt.Sprintf("%.2f,", cmplx.Abs(vParallel))
 							line = s.addCCurrent(line)
 							line += fmt.Sprintf("%f,", cmplx.Abs(iSeries))
@@ -300,28 +310,34 @@ func main() {
 							m.calcMaxEngaged(s, vParallel, iSeries, freqVal)
 						case 2:
 							line = ""
-							zLoad := s.calcZLoad()                  //calculate load impedance
-							zSeries := zLoad + seriesZ
-							ySeries := calcYfromZ(zSeries)
-							s.capCurrent(complex(s.vSource, 0))
-							iSeries := complex(s.vSource, 0) * ySeries
+							zLoad := s.calcZLoad()  //calculate load impedance
+							zTwo := zLoad + seriesZ //looking into load in series with the tuning inductor
+							yTwo := 1.0 / zTwo
+							yThree := yTwo + parallelY //looking into zTwo in parallel with tuning capacitor
+							zThree := 1.0 / yThree
+							zFour := zSource + zThree  //total load on the generator
+							iSource := vSource / zFour //total current provided by the generator
+							vParallel := iSource * zThree
+							s.capCurrent(vParallel)
+							iSeries := vParallel * yTwo
 							s.indVoltage(iSeries)
 							line += fmt.Sprintf("%.2f,", s.vSource)
 							line = s.addCCurrent(line)
 							line += fmt.Sprintf("%f,", cmplx.Abs(iSeries))
 							line = s.addLVoltage(line)
-							m.calcMaxEngaged(s, complex(s.vSource, 0), iSeries, freqVal)
-                        case 3:
-                            line = ""
-                            zLoad := s.calcZLoad()
-                            zSeries := zLoad + seriesZ
-                            iSeries := complex(s.vSource, 0) / zSeries
-                            s.indVoltage(iSeries)
-                            line += fmt.Sprintf("%.2f,", s.vSource)
-                            line = s.addCCurrent(line)
-                            line += fmt.Sprintf("%f,", cmplx.Abs(iSeries))
-                            line = s.addLVoltage(line)
-                            m.calcMaxEngaged(s, complex(s.vSource, 0), iSeries, freqVal) 
+							m.calcMaxEngaged(s, vParallel /*complex(s.vSource, 0)*/, iSeries, freqVal)
+						case 3:
+							line = ""
+							zLoad := s.calcZLoad()
+							zThree := zLoad + seriesZ
+							zFour := zSource + zThree
+							iSeries := vSource / zFour
+							s.indVoltage(iSeries)
+							line += fmt.Sprintf("%.2f,", s.vSource)
+							line = s.addCCurrent(line)
+							line += fmt.Sprintf("%f,", cmplx.Abs(iSeries))
+							line = s.addLVoltage(line)
+							m.calcMaxEngaged(s, complex(0, 0), iSeries, freqVal)
 						}
 						_, err := f1.WriteString(line)
 						if err != nil {
@@ -336,7 +352,7 @@ func main() {
 					}
 				}
 			}
-            m.writeMaxVI(f2)
+			m.writeMaxVI(f2)
 
 		case "fileName":
 			s.outputFile = home + item.Value

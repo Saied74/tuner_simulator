@@ -102,7 +102,6 @@ var voltageValidator = cli.ItemValidator(func(x string) bool {
 	return true
 })
 
-
 var qValidator = cli.ItemValidator(func(x string) bool {
 	_, err := strconv.Atoi(x)
 	if err != nil {
@@ -110,7 +109,6 @@ var qValidator = cli.ItemValidator(func(x string) bool {
 	}
 	return true
 })
-
 
 var simpleValidator = cli.ItemValidator(func(x string) bool {
 	switch x {
@@ -127,7 +125,6 @@ var simpleValidator = cli.ItemValidator(func(x string) bool {
 	}
 	return false
 })
-
 
 var fitValidator = cli.ItemValidator(func(x string) bool {
 	switch x {

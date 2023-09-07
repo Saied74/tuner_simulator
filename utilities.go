@@ -267,7 +267,6 @@ func (s *smith) calcEndPoint() {
 	s.point1.b = -s.point1.x / zSq
 }
 
-
 func getImp(g, b float64) (float64, float64) {
 	ySq := b*b + g*g
 	return g / ySq, -b / ySq
@@ -353,27 +352,27 @@ func fitLC(lc float64, base []float64) (float64, []*matchParts, bool) {
 	}
 	if math.Abs(lc-smallest) < smallest/2 {
 		y += smallest
-        match[len(match)-1].inPlay = true
-        match[len(match)-1].value = smallest
+		match[len(match)-1].inPlay = true
+		match[len(match)-1].value = smallest
 	}
 	return y, match, true
 }
 
 func (s *smith) addCCurrent(line string) string {
-    if s.region != 3 {
-	    for _, c := range s.matchC {
-		    line += fmt.Sprintf("%.2f,", cmplx.Abs(c.iThrough))
-	    }
-    }
+	// if s.region != 3 {
+	for _, c := range s.matchC {
+		line += fmt.Sprintf("%.2f,", cmplx.Abs(c.iThrough))
+	}
+	//  }
 	return line
 }
 
 func (s *smith) addLVoltage(line string) string {
-    if s.region != 4 {
-	    for _, l := range s.matchL {
-		    line += fmt.Sprintf("%.2f,", cmplx.Abs(l.vAcross))
-	    }
-    }
+	if s.region != 4 {
+		for _, l := range s.matchL {
+			line += fmt.Sprintf("%.2f,", cmplx.Abs(l.vAcross))
+		}
+	}
 	return line
 }
 
@@ -426,7 +425,7 @@ func (s *smith) calcImpedance(f float64) (complex128, complex128) {
 			r := x / s.capQ
 			s.matchC[i].resistance = r
 			s.matchC[i].impedance = complex(r, x)
-            yParallel += 1.0 / s.matchC[i].impedance
+			yParallel += 1.0 / s.matchC[i].impedance
 		}
 	}
 	for i := range s.matchL {
@@ -440,7 +439,6 @@ func (s *smith) calcImpedance(f float64) (complex128, complex128) {
 	}
 	return xSeries, yParallel
 }
-
 
 // also returns the load current
 func (s *smith) capCurrent(vParallel complex128) {
